@@ -1,45 +1,64 @@
-import { sveltekit } from '@sveltejs/kit/vite';
-import { defineConfig } from 'vite';
-import { VitePWA } from 'vite-plugin-pwa';
-import tailwindcss from '@tailwindcss/vite';
+import { sveltekit } from "@sveltejs/kit/vite";
+import { defineConfig } from "vite";
+import tailwindcss from "@tailwindcss/vite";
+
+import { SvelteKitPWA } from "@vite-pwa/sveltekit";
 
 export default defineConfig({
-	plugins: [
-		tailwindcss(),
+  plugins: [
+    tailwindcss(),
 
-		sveltekit(),
+    sveltekit(),
 
-		VitePWA({
-			registerType: 'autoUpdate',
+    SvelteKitPWA({
+      strategies: "generateSW",
 
-			manifest: {
-				name: 'Namaz Vakitleri',
-				short_name: 'Namaz',
+      registerType: "autoUpdate",
 
-				description:
-					'Namaz vakitleri ve günlük hadis uygulaması',
+      injectRegister: "auto",
 
-				theme_color: '#000000',
+      devOptions: {
+        enabled: true,
+      },
+      manifest: {
+        name: "Namaz Vakitleri",
 
-				background_color: '#000000',
+        short_name: "Namaz",
 
-				display: 'standalone',
+        description: "Namaz vakitleri ve günlük hadis uygulaması",
 
-				start_url: '/',
+        theme_color: "#000000",
 
-				icons: [
-					{
-						src: '/icon-192.png',
-						sizes: '192x192',
-						type: 'image/png'
-					},
-					{
-						src: '/icon-512.png',
-						sizes: '512x512',
-						type: 'image/png'
-					}
-				]
-			}
-		})
-	]
+        background_color: "#000000",
+
+        display: "standalone",
+
+        start_url: "/",
+
+        orientation: "portrait",
+
+        icons: [
+          {
+            src: "icon-192.png",
+
+            sizes: "192x192",
+
+            type: "image/png",
+
+            purpose: "any maskable",
+          },
+
+          {
+            src: "icon-512.png",
+
+            sizes: "512x512",
+
+            type: "image/png",
+
+            purpose: "any maskable",
+          },
+        ],
+      },
+    }),
+  ],
 });
