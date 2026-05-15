@@ -131,7 +131,6 @@
 
 <div class="min-h-screen bg-black px-6 py-10 text-white">
   <div class="mx-auto max-w-md">
-    <img src={logo} alt="Logo" class="mx-auto mb-8 w-40 opacity-90" />
 
     <div
       class="mb-6 rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur"
@@ -202,5 +201,6 @@
         </p>
       </div>
     </div>
+    <img src={logo} alt="Logo" class="mx-auto mb-8 w-40 opacity-90" />
   </div>
 </div>
