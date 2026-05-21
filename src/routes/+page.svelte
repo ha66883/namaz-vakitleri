@@ -29,6 +29,24 @@
   let countdown = $state("");
   let hadith = $state("");
 
+  let deferredPrompt: any = null;
+
+  let showInstallButton = $state(false);
+
+  async function installApp() {
+    if (!deferredPrompt) return;
+
+    deferredPrompt.prompt();
+
+    const { outcome } = await deferredPrompt.userChoice;
+
+    if (outcome === "accepted") {
+      showInstallButton = false;
+    }
+
+    deferredPrompt = null;
+  }
+
   function getPrayerDate(time: string) {
     const [hours, minutes] = time.split(":").map(Number);
 
@@ -143,6 +161,11 @@
   }
 
   onMount(async () => {
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      showInstallButton = true;
+    });
     const cachedLocationId = localStorage.getItem("location-id");
 
     if (cachedLocationId) {
@@ -274,13 +297,23 @@
         </div>
       {/if}
     </div>
-   
+
     <button
       onclick={refreshLocation}
       class="mt-6 w-full rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/70"
     >
       📍 Konumu Güncelle
     </button>
+
+    {#if showInstallButton}
+      <button
+        onclick={installApp}
+        class="fixed bottom-6 left-1/2 z-50 w-[90%] max-w-md -translate-x-1/2 rounded-2xl bg-yellow-500 px-5 py-4 text-lg font-semibold text-black shadow-2xl"
+      >
+        📲 Uygulamayı Yükle
+      </button>
+    {/if}
+
     <div class="mb-8 flex justify-center">
       <img src={logo} alt="Logo" class="w-28 opacity-95" />
     </div>
