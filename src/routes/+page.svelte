@@ -93,20 +93,28 @@
     }, 1000);
   }
 
-  async function fetchPrayerTimes(lat: number, lon: number) {
-    const response = await fetch(
-      `https://api.aladhan.com/v1/timings?latitude=${lat}&longitude=${lon}&method=13&tune=0,0,0,0,0,0,0,0,0`,
-    );
+  async function fetchPrayerTimes(locationId: number) {
+    const response = await fetch("/api/prayer-times");
 
     const data = await response.json();
 
+    const date = new Date();
+    const today =
+      `${date.getFullYear()}-` +
+      `${String(date.getMonth() + 1).padStart(2, "0")}-` +
+      `${String(date.getDate()).padStart(2, "0")}T00:00:00`;
+
+    const timings = data.find((item: any) => {
+      return item.date === today;
+    });
+
     prayers = {
-      Imsak: data.data.timings.Imsak,
-      Sunrise: data.data.timings.Sunrise,
-      Dhuhr: data.data.timings.Dhuhr,
-      Asr: data.data.timings.Asr,
-      Maghrib: data.data.timings.Maghrib,
-      Isha: data.data.timings.Isha,
+      Imsak: timings.fajr,
+      Sunrise: timings.sun,
+      Dhuhr: timings.dhuhr,
+      Asr: timings.asr,
+      Maghrib: timings.maghrib,
+      Isha: timings.isha,
     };
 
     calculateNextPrayer();
@@ -124,17 +132,53 @@
     hadithSource = selected.source;
   }
 
-  onMount(() => {
+  async function getCity(lat: number, lon: number) {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
+    );
+
+    const data = await response.json();
+
+    return data.address.city || data.address.town || data.address.village;
+  }
+
+  onMount(async () => {
+    const cachedLocationId = localStorage.getItem("location-id");
+
+    if (cachedLocationId) {
+      await fetchPrayerTimes(Number(cachedLocationId));
+
+      fetchHadith();
+
+      return;
+    }
+
     navigator.geolocation.getCurrentPosition(async (position) => {
       const lat = position.coords.latitude;
 
       const lon = position.coords.longitude;
 
-      await fetchPrayerTimes(lat, lon);
+      const city = await getCity(lat, lon);
+
+      const searchResponse = await fetch(`/api/location-search?city=${city}`);
+
+      const locations = await searchResponse.json();
+
+      const locationId = locations[0].id;
+
+      localStorage.setItem("location-id", locationId.toString());
+
+      await fetchPrayerTimes(locationId);
 
       fetchHadith();
     });
   });
+
+  async function refreshLocation() {
+    localStorage.removeItem("location-id");
+
+    location.reload();
+  }
 </script>
 
 <div class="min-h-screen bg-black px-5 py-8 text-white">
@@ -229,9 +273,16 @@
           </p>
         </div>
       {/if}
-      <div class="mb-8 flex justify-center">
-        <img src={logo} alt="Logo" class="w-28 opacity-95" />
-      </div>
+    </div>
+   
+    <button
+      onclick={refreshLocation}
+      class="mt-6 w-full rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/70"
+    >
+      📍 Konumu Güncelle
+    </button>
+    <div class="mb-8 flex justify-center">
+      <img src={logo} alt="Logo" class="w-28 opacity-95" />
     </div>
   </div>
 </div>
