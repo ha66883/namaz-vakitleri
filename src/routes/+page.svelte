@@ -29,6 +29,16 @@
   let countdown = $state("");
   let hadith = $state("");
 
+  let currentCity = $state("");
+
+  let cityInput = $state("");
+
+  let cityResults = $state<any[]>([]);
+
+  let showCitySelection = $state(false);
+
+  let locationError = $state(false);
+
   let deferredPrompt = $state<any>(null);
 
   async function installApp() {
@@ -36,6 +46,38 @@
     deferredPrompt.prompt();
     await deferredPrompt.userChoice;
     deferredPrompt = null;
+  }
+
+  async function searchCity() {
+    console.log("Sehir: ", cityInput);
+    if (!cityInput) return;
+
+    const response = await fetch(`/api/location-search?city=${cityInput}`);
+
+    console.log("Response: ", response);
+    const data = await response.json();
+    console.log("Data:", data);
+
+    cityResults = data;
+  }
+
+  async function selectCity(city: any) {
+    currentCity = city.region;
+
+    console.log("currentcity: ", currentCity);
+
+    localStorage.setItem("city", city.name);
+
+    localStorage.setItem("location-id", city.id.toString());
+
+    cityResults = [];
+
+    showCitySelection = false;
+    locationError = false;
+
+    await fetchPrayerTimes(city.id);
+
+    fetchHadith();
   }
 
   function getPrayerDate(time: string) {
@@ -103,7 +145,7 @@
   }
 
   async function fetchPrayerTimes(locationId: number) {
-    const response = await fetch("/api/prayer-times");
+    const response = await fetch(`/api/prayer-times?locationId=${locationId}`);
 
     const data = await response.json();
 
@@ -158,6 +200,11 @@
     });
     const cachedLocationId = localStorage.getItem("location-id");
 
+    const cachedCity = localStorage.getItem("city");
+    if (cachedCity) {
+      currentCity = cachedCity;
+    }
+
     if (cachedLocationId) {
       await fetchPrayerTimes(Number(cachedLocationId));
 
@@ -166,146 +213,251 @@
       return;
     }
 
-    navigator.geolocation.getCurrentPosition(async (position) => {
-      const lat = position.coords.latitude;
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const lat = position.coords.latitude;
 
-      const lon = position.coords.longitude;
+        const lon = position.coords.longitude;
 
-      const city = await getCity(lat, lon);
+        const city = await getCity(lat, lon);
+        currentCity = city;
+        localStorage.setItem("city", city);
 
-      const searchResponse = await fetch(`/api/location-search?city=${city}`);
+        const searchResponse = await fetch(`/api/location-search?city=${city}`);
 
-      const locations = await searchResponse.json();
+        const locations = await searchResponse.json();
 
-      const locationId = locations[0].id;
+        const locationId = locations[0].id;
 
-      localStorage.setItem("location-id", locationId.toString());
+        localStorage.setItem("location-id", locationId.toString());
 
-      await fetchPrayerTimes(locationId);
+        await fetchPrayerTimes(locationId);
 
-      fetchHadith();
-    });
+        fetchHadith();
+      },
+      () => {
+        locationError = true;
+        showCitySelection = true;
+
+        loading = false;
+      },
+    );
   });
 
   async function refreshLocation() {
+    loading = true;
+
     localStorage.removeItem("location-id");
 
-    location.reload();
+    localStorage.removeItem("city");
+
+    currentCity = "";
+
+    cityInput = "";
+
+    cityResults = [];
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const lat = position.coords.latitude;
+
+        const lon = position.coords.longitude;
+
+        const city = await getCity(lat, lon);
+
+        currentCity = city;
+
+        localStorage.setItem("city", city);
+
+        const searchResponse = await fetch(`/api/location-search?city=${city}`);
+
+        const locations = await searchResponse.json();
+
+        const locationId = locations[0].id;
+
+        localStorage.setItem("location-id", locationId.toString());
+
+        await fetchPrayerTimes(locationId);
+
+        fetchHadith();
+
+        loading = false;
+      },
+      () => {
+        loading = false;
+
+        currentCity = "";
+      },
+    );
   }
 </script>
 
-<div class="min-h-screen bg-black px-5 py-8 text-white">
-  <div class="mx-auto max-w-md">
-    <div
-      class="mb-5 rounded-[32px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-xl"
-    >
-      <p class="text-sm tracking-wide text-white/50">Sonraki Namaz</p>
-
-      {#if loading}
-        <div class="mt-3 h-10 w-32 animate-pulse rounded-xl bg-white/10"></div>
-
-        <div class="mt-5 h-14 w-48 animate-pulse rounded-2xl bg-white/10"></div>
-      {:else}
-        <h1 class="mt-2 text-4xl font-light">
-          {nextPrayer}
-        </h1>
-
-        <p class="mt-4 text-5xl font-bold tracking-wider">
-          {countdown}
-        </p>
-      {/if}
-    </div>
-
-    <div
-      class="mb-5 rounded-[32px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-xl"
-    >
-      <h2 class="mb-5 text-xl font-semibold">Namaz Vakitleri</h2>
-
-      {#if loading}
-        <div class="space-y-4">
-          {#each Array(6) as _}
-            <div class="h-6 animate-pulse rounded bg-white/10"></div>
-          {/each}
-        </div>
-      {:else}
-        <div class="space-y-4">
-          <div class="flex justify-between">
-            <span>İmsak</span>
-            <span>{prayers.Imsak}</span>
-          </div>
-
-          <div class="flex justify-between">
-            <span>Güneş</span>
-            <span>{prayers.Sunrise}</span>
-          </div>
-
-          <div class="flex justify-between">
-            <span>Öğle</span>
-            <span>{prayers.Dhuhr}</span>
-          </div>
-
-          <div class="flex justify-between">
-            <span>İkindi</span>
-            <span>{prayers.Asr}</span>
-          </div>
-
-          <div class="flex justify-between">
-            <span>Akşam</span>
-            <span>{prayers.Maghrib}</span>
-          </div>
-
-          <div class="flex justify-between">
-            <span>Yatsı</span>
-            <span>{prayers.Isha}</span>
-          </div>
-        </div>
-      {/if}
-    </div>
-
-    <div
-      class="rounded-[32px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-xl"
-    >
-      <h2 class="mb-5 text-xl font-semibold">Günün Hadisi</h2>
-
-      {#if loading}
-        <div class="space-y-3">
-          <div class="h-5 w-full animate-pulse rounded bg-white/10"></div>
-
-          <div class="h-5 w-5/6 animate-pulse rounded bg-white/10"></div>
-        </div>
-      {:else}
-        <p class="text-lg leading-9 text-white/90 italic">
-          “{hadith}”
-        </p>
-
-        <div class="mt-6 flex items-center gap-2">
-          <div class="h-px flex-1 bg-white/10"></div>
-
-          <p class="text-sm tracking-wide text-white/50">
-            {hadithSource}
-          </p>
-        </div>
-      {/if}
-    </div>
-
-    <button
-      onclick={refreshLocation}
-      class="mt-6 w-full rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/70"
-    >
-      📍 Konumu Güncelle
-    </button>
-
-    {#if deferredPrompt}
-      <button
-        onclick={installApp}
-        class="fixed bottom-6 left-1/2 z-50 w-[90%] max-w-md -translate-x-1/2 rounded-2xl bg-yellow-500 px-5 py-4 text-lg font-semibold text-black shadow-2xl"
+{#if currentCity}
+  <div class="min-h-screen bg-black px-5 py-8 text-white">
+    <div class="mx-auto max-w-md">
+      <div
+        class="mb-5 rounded-[32px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-xl"
       >
-        📲 Uygulamayı Yükle
-      </button>
-    {/if}
+        <p class="text-sm tracking-wide text-white/50">Sonraki Namaz</p>
 
+        {#if loading}
+          <div
+            class="mt-3 h-10 w-32 animate-pulse rounded-xl bg-white/10"
+          ></div>
+
+          <div
+            class="mt-5 h-14 w-48 animate-pulse rounded-2xl bg-white/10"
+          ></div>
+        {:else}
+          <h1 class="mt-2 text-4xl font-light">
+            {nextPrayer}
+          </h1>
+
+          <p class="mt-4 text-5xl font-bold tracking-wider">
+            {countdown}
+          </p>
+        {/if}
+      </div>
+
+      <div
+        class="mb-5 rounded-[32px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-xl"
+      >
+        <h2 class="mb-5 text-xl font-semibold">Namaz Vakitleri</h2>
+
+        {#if loading}
+          <div class="space-y-4">
+            {#each Array(6) as _}
+              <div class="h-6 animate-pulse rounded bg-white/10"></div>
+            {/each}
+          </div>
+        {:else}
+          <div class="space-y-4">
+            <div class="flex justify-between">
+              <span>İmsak</span>
+              <span>{prayers.Imsak}</span>
+            </div>
+
+            <div class="flex justify-between">
+              <span>Güneş</span>
+              <span>{prayers.Sunrise}</span>
+            </div>
+
+            <div class="flex justify-between">
+              <span>Öğle</span>
+              <span>{prayers.Dhuhr}</span>
+            </div>
+
+            <div class="flex justify-between">
+              <span>İkindi</span>
+              <span>{prayers.Asr}</span>
+            </div>
+
+            <div class="flex justify-between">
+              <span>Akşam</span>
+              <span>{prayers.Maghrib}</span>
+            </div>
+
+            <div class="flex justify-between">
+              <span>Yatsı</span>
+              <span>{prayers.Isha}</span>
+            </div>
+          </div>
+        {/if}
+      </div>
+
+      <div
+        class="rounded-[32px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-xl"
+      >
+        <h2 class="mb-5 text-xl font-semibold">Günün Hadisi</h2>
+
+        {#if loading}
+          <div class="space-y-3">
+            <div class="h-5 w-full animate-pulse rounded bg-white/10"></div>
+
+            <div class="h-5 w-5/6 animate-pulse rounded bg-white/10"></div>
+          </div>
+        {:else}
+          <p class="text-lg leading-9 text-white/90 italic">
+            “{hadith}”
+          </p>
+
+          <div class="mt-6 flex items-center gap-2">
+            <div class="h-px flex-1 bg-white/10"></div>
+
+            <p class="text-sm tracking-wide text-white/50">
+              {hadithSource}
+            </p>
+          </div>
+        {/if}
+      </div>
+
+      <button
+        onclick={refreshLocation}
+        class="mt-6 w-full rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/70"
+      >
+        📍 Konumu Güncelle
+      </button>
+
+      <div class="mt-4 text-center text-sm text-white/40">
+        📍 Konum:
+        <span class="text-white/70">
+          {currentCity}
+        </span>
+      </div>
+
+      {#if deferredPrompt}
+        <button
+          onclick={installApp}
+          class="fixed bottom-6 left-1/2 z-50 w-[90%] max-w-md -translate-x-1/2 rounded-2xl bg-yellow-500 px-5 py-4 text-lg font-semibold text-black shadow-2xl"
+        >
+          📲 Uygulamayı Yükle
+        </button>
+      {/if}
+
+      <div class="mb-8 mt-8 flex justify-center">
+        <img src={logo} alt="Logo" class="w-28 opacity-95" />
+      </div>
+    </div>
+  </div>
+{:else}
+  <div class="min-h-screen bg-black px-5 py-8 text-white">
+    <div class="mx-auto max-w-md">
+      <div
+        class="rounded-[32px] border border-white/10 bg-white/5 p-5 shadow-2xl backdrop-blur-xl"
+      >
+        <p class="mb-4 text-sm text-white/60">
+          Konum alınamadı. Lütfen şehir seçin.
+        </p>
+
+        <input
+          bind:value={cityInput}
+          placeholder="Şehir ara..."
+          class="w-full rounded-2xl border border-white/10 bg-black/30 p-4 text-white outline-none"
+        />
+
+        <button
+          onclick={searchCity}
+          class="mt-3 w-full rounded-2xl bg-white/10 p-4"
+        >
+          Şehir Ara
+        </button>
+
+        {#if cityResults.length > 0}
+          <div class="mt-3 space-y-2">
+            {#each cityResults as city}
+              <button
+                onclick={() => selectCity(city)}
+                class="w-full rounded-xl border border-white/10 bg-white/5 p-3 text-left text-white"
+              >
+                {city.region || city.name}
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    </div>
     <div class="mb-8 flex justify-center">
       <img src={logo} alt="Logo" class="w-28 opacity-95" />
     </div>
   </div>
-</div>
+{/if}

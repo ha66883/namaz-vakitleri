@@ -1,11 +1,27 @@
-import { json } from '@sveltejs/kit';
+import { json } from "@sveltejs/kit";
 
-export async function GET() {
-	const response = await fetch(
-		'https://prayertimes.api.abdus.dev/api/diyanet/prayertimes?location_id=10014'
-	);
+export async function GET({ url }) {
+  try {
+    const locationId = url.searchParams.get("locationId");
 
-	const data = await response.json();
+    if (!locationId) {
+      return json({
+        error: "Missing locationId",
+      });
+    }
 
-	return json(data);
+    const response = await fetch(
+      `https://prayertimes.api.abdus.dev/api/diyanet/prayertimes?location_id=${locationId}`,
+    );
+
+    const data = await response.json();
+
+    return json(data);
+  } catch (error) {
+    console.error(error);
+
+    return json({
+      error: "Failed to fetch prayer times",
+    });
+  }
 }
