@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import logo from "$lib/assets/logo-gold.png";
+  import logo from "$lib/assets/logo-goldd.png";
   import { hadiths } from "$lib/data/hadiths";
 
   type PrayerTimes = {
@@ -414,17 +414,20 @@
         </button>
       {/if}
 
-      <div class="mb-8 mt-8 flex justify-center">
+      <div class="mb-1 mt-8 flex justify-center">
+        <img src={logo} alt="Logo" class="w-28 opacity-95" />
+      </div>
+      <div
+        class="mt-1 mb-8 flex items-center justify-center gap-2 text-sm text-white/40"
+      >
+        <span>© Havva Demir</span>
         <a
           href="https://www.linkedin.com/in/havva-demir-dev"
           target="_blank"
           rel="noopener noreferrer"
+          class="transition hover:text-white/80"
         >
-          <img
-            src={logo}
-            alt="Logo"
-            class="w-28 opacity-95 transition hover:scale-105"
-          />
+          LinkedIn
         </a>
       </div>
     </div>
@@ -467,17 +470,20 @@
       </div>
     </div>
 
-    <div class="mb-8 mt-8 flex justify-center">
+    <div class="mb-1 mt-8 flex justify-center">
+      <img src={logo} alt="Logo" class="w-28 opacity-95" />
+    </div>
+    <div
+      class="mt-1 mb-8 flex items-center justify-center gap-2 text-sm text-white/40"
+    >
+      <span>© Havva Demir</span>
       <a
         href="https://www.linkedin.com/in/havva-demir-dev"
         target="_blank"
         rel="noopener noreferrer"
+        class="transition hover:text-white/80"
       >
-        <img
-          src={logo}
-          alt="Logo"
-          class="w-28 opacity-95 transition hover:scale-105"
-        />
+        LinkedIn
       </a>
     </div>
   </div>
