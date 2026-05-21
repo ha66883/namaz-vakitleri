@@ -415,7 +415,17 @@
       {/if}
 
       <div class="mb-8 mt-8 flex justify-center">
-        <img src={logo} alt="Logo" class="w-28 opacity-95" />
+        <a
+          href="https://linkedin.com/in/havva-d-78660221"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <img
+            src={logo}
+            alt="Logo"
+            class="w-28 opacity-95 transition hover:scale-105"
+          />
+        </a>
       </div>
     </div>
   </div>
@@ -456,8 +466,19 @@
         {/if}
       </div>
     </div>
-    <div class="mb-8 flex justify-center">
-      <img src={logo} alt="Logo" class="w-28 opacity-95" />
+
+    <div class="mb-8 mt-8 flex justify-center">
+      <a
+        href="https://linkedin.com/in/havva-d-78660221"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        <img
+          src={logo}
+          alt="Logo"
+          class="w-28 opacity-95 transition hover:scale-105"
+        />
+      </a>
     </div>
   </div>
 {/if}
