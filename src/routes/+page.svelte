@@ -416,7 +416,7 @@
 
       <div class="mb-8 mt-8 flex justify-center">
         <a
-          href="https://linkedin.com/in/havva-d-78660221"
+          href="https://www.linkedin.com/in/havva-demir-dev"
           target="_blank"
           rel="noopener noreferrer"
         >
@@ -469,7 +469,7 @@
 
     <div class="mb-8 mt-8 flex justify-center">
       <a
-        href="https://linkedin.com/in/havva-d-78660221"
+        href="https://www.linkedin.com/in/havva-demir-dev"
         target="_blank"
         rel="noopener noreferrer"
       >
