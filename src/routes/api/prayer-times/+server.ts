@@ -14,6 +14,9 @@ export async function GET({ url }) {
       `https://prayertimes.api.abdus.dev/api/diyanet/prayertimes?location_id=${locationId}`,
     );
 
+    if (!response.ok) {
+      return json({ error: "Prayer API failed" });
+    }
     const data = await response.json();
 
     return json(data);

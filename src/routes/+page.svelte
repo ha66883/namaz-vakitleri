@@ -49,14 +49,11 @@
   }
 
   async function searchCity() {
-    console.log("Sehir: ", cityInput);
     if (!cityInput) return;
 
     const response = await fetch(`/api/location-search?city=${cityInput}`);
 
-    console.log("Response: ", response);
     const data = await response.json();
-    console.log("Data:", data);
 
     cityResults = data;
   }
@@ -64,10 +61,9 @@
   async function selectCity(city: any) {
     currentCity = city.region;
 
-    console.log("currentcity: ", currentCity);
-
-    localStorage.setItem("city", city.name);
-
+    if (currentCity) {
+      localStorage.setItem("city", currentCity);
+    }
     localStorage.setItem("location-id", city.id.toString());
 
     cityResults = [];
@@ -190,7 +186,13 @@
 
     const data = await response.json();
 
-    return data.address.city || data.address.town || data.address.village;
+    return (
+      data.address.city ||
+      data.address.town ||
+      data.address.village ||
+      data.address.municipality ||
+      ""
+    );
   }
 
   onMount(async () => {
@@ -201,10 +203,9 @@
     const cachedLocationId = localStorage.getItem("location-id");
 
     const cachedCity = localStorage.getItem("city");
-    if (cachedCity) {
+    if (cachedCity && cachedCity !== "undefined") {
       currentCity = cachedCity;
     }
-
     if (cachedLocationId) {
       await fetchPrayerTimes(Number(cachedLocationId));
 
@@ -220,8 +221,11 @@
         const lon = position.coords.longitude;
 
         const city = await getCity(lat, lon);
-        currentCity = city;
-        localStorage.setItem("city", city);
+        currentCity = city || "";
+        showCitySelection = false;
+        if (city) {
+          localStorage.setItem("city", city);
+        }
 
         const searchResponse = await fetch(`/api/location-search?city=${city}`);
 
@@ -265,14 +269,21 @@
 
         const city = await getCity(lat, lon);
 
-        currentCity = city;
-
-        localStorage.setItem("city", city);
+        currentCity = city || "";
+        showCitySelection = false;
+        if (city) {
+          localStorage.setItem("city", city);
+        }
 
         const searchResponse = await fetch(`/api/location-search?city=${city}`);
 
         const locations = await searchResponse.json();
 
+        if (!locations?.length) {
+          loading = false;
+          currentCity = "";
+          return;
+        }
         const locationId = locations[0].id;
 
         localStorage.setItem("location-id", locationId.toString());
@@ -392,6 +403,7 @@
       </div>
 
       <button
+        type="button"
         onclick={refreshLocation}
         class="mt-6 w-full rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/70"
       >
@@ -407,6 +419,7 @@
 
       {#if deferredPrompt}
         <button
+          type="button"
           onclick={installApp}
           class="fixed bottom-6 left-1/2 z-50 w-[90%] max-w-md -translate-x-1/2 rounded-2xl bg-yellow-500 px-5 py-4 text-lg font-semibold text-black shadow-2xl"
         >
@@ -449,6 +462,7 @@
         />
 
         <button
+          type="button"
           onclick={searchCity}
           class="mt-3 w-full rounded-2xl bg-white/10 p-4"
         >
@@ -459,6 +473,7 @@
           <div class="mt-3 space-y-2">
             {#each cityResults as city}
               <button
+                type="button"
                 onclick={() => selectCity(city)}
                 class="w-full rounded-xl border border-white/10 bg-white/5 p-3 text-left text-white"
               >
