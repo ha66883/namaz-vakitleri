@@ -40,6 +40,7 @@
   let locationError = $state(false);
 
   let deferredPrompt = $state<any>(null);
+  let countdownInterval: ReturnType<typeof setInterval>;
 
   async function installApp() {
     if (!deferredPrompt) return;
@@ -76,7 +77,12 @@
     fetchHadith();
   }
 
-  function getPrayerDate(time: string) {
+  function getPrayerDate(time?: string) {
+    if (!time) {
+      console.error("Prayer time missing:", time);
+      return new Date(NaN);
+    }
+
     const [hours, minutes] = time.split(":").map(Number);
 
     const date = new Date();
@@ -84,11 +90,15 @@
     date.setHours(hours);
     date.setMinutes(minutes);
     date.setSeconds(0);
+    date.setMilliseconds(0);
 
     return date;
   }
-
   function calculateNextPrayer() {
+    if (!prayers) return;
+
+    if (!prayers.Imsak) return;
+
     const now = new Date();
 
     const prayerList = [
@@ -98,34 +108,53 @@
       { name: "İkindi", time: prayers.Asr },
       { name: "Akşam", time: prayers.Maghrib },
       { name: "Yatsı", time: prayers.Isha },
-    ];
+    ].filter((p) => p.time);
 
     for (const prayer of prayerList) {
       const prayerDate = getPrayerDate(prayer.time);
+      if (isNaN(prayerDate.getTime())) {
+        continue;
+      }
+
+      if (isNaN(prayerDate.getTime())) {
+        console.error("Invalid prayer date:", prayer);
+        continue;
+      }
 
       if (prayerDate > now) {
         nextPrayer = prayer.name;
-
         updateCountdown(prayerDate);
-
         return;
       }
     }
 
+    // Morgen İmsak
     const tomorrowFajr = getPrayerDate(prayers.Imsak);
+
+    if (isNaN(tomorrowFajr.getTime())) {
+      console.error("Invalid İmsak");
+      return;
+    }
 
     tomorrowFajr.setDate(tomorrowFajr.getDate() + 1);
 
     nextPrayer = "İmsak";
-
     updateCountdown(tomorrowFajr);
   }
 
   function updateCountdown(target: Date) {
-    setInterval(() => {
+    clearInterval(countdownInterval);
+
+    countdownInterval = setInterval(() => {
       const now = new Date();
 
       const diff = target.getTime() - now.getTime();
+
+      // Falls Zeit vorbei ist
+      if (diff <= 0) {
+        calculateNextPrayer();
+        return;
+      }
 
       const hours = Math.floor(diff / 1000 / 60 / 60);
 
@@ -154,6 +183,11 @@
     const timings = data.find((item: any) => {
       return item.date === today;
     });
+
+    if (!timings) {
+      loading = false;
+      return;
+    }
 
     prayers = {
       Imsak: timings.fajr,
@@ -246,6 +280,9 @@
         loading = false;
       },
     );
+    return () => {
+      clearInterval(countdownInterval);
+    };
   });
 
   async function refreshLocation() {
