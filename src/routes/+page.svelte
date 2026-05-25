@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import logo from "$lib/assets/logo-goldd.png";
   import { hadiths } from "$lib/data/hadiths";
-
+  import * as SunCalc from "suncalc";
   type PrayerTimes = {
     Imsak: string;
     Sunrise: string;
@@ -41,6 +41,9 @@
 
   let deferredPrompt = $state<any>(null);
   let countdownInterval: ReturnType<typeof setInterval>;
+
+  let latitude = $state<number | null>(null);
+  let longitude = $state<number | null>(null);
 
   async function installApp() {
     if (!deferredPrompt) return;
@@ -94,6 +97,29 @@
 
     return date;
   }
+
+  // function formatTime(date: Date) {
+  //   return date.toLocaleTimeString("tr-TR", {
+  //     hour: "2-digit",
+  //     minute: "2-digit",
+  //   });
+  // }
+
+  function addMinutes(time: string, minutes: number) {
+    const [hours, mins] = time.split(":").map(Number);
+
+    const date = new Date();
+
+    date.setHours(hours);
+    date.setMinutes(mins + minutes);
+    date.setSeconds(0);
+
+    return date.toLocaleTimeString("tr-TR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
   function calculateNextPrayer() {
     if (!prayers) return;
 
@@ -112,9 +138,6 @@
 
     for (const prayer of prayerList) {
       const prayerDate = getPrayerDate(prayer.time);
-      if (isNaN(prayerDate.getTime())) {
-        continue;
-      }
 
       if (isNaN(prayerDate.getTime())) {
         console.error("Invalid prayer date:", prayer);
@@ -174,15 +197,25 @@
 
     const data = await response.json();
 
-    const date = new Date();
-    const today =
-      `${date.getFullYear()}-` +
-      `${String(date.getMonth() + 1).padStart(2, "0")}-` +
-      `${String(date.getDate()).padStart(2, "0")}T00:00:00`;
+    const now = new Date();
+
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+
+    const today = `${year}-${month}-${day}`;
 
     const timings = data.find((item: any) => {
-      return item.date === today;
+      return item.date.slice(0, 10) === today;
     });
+
+    if (!Array.isArray(data)) {
+      console.error("Prayer API returned invalid data:", data);
+
+      loading = false;
+
+      return;
+    }
 
     if (!timings) {
       loading = false;
@@ -229,6 +262,43 @@
     );
   }
 
+  function getKerahatTimes() {
+    console.log("hier:", latitude, longitude);
+    if (latitude === null || longitude === null) {
+      return null;
+    }
+
+    const today = new Date();
+
+    const times = SunCalc.getTimes(today, latitude, longitude);
+
+    const sunrise = times.sunrise;
+    const sunset = times.sunset;
+    const solarNoon = times.solarNoon;
+
+    const sunriseEnd = new Date(sunrise.getTime() + 45 * 60 * 1000);
+
+    const sunsetStart = new Date(sunset.getTime() - 45 * 60 * 1000);
+
+    const zawalStart = new Date(solarNoon.getTime() - 45 * 60 * 1000);
+
+    return {
+      sunriseStart: prayers.Sunrise,
+      sunriseEnd: addMinutes(prayers.Sunrise, 45),
+
+      zawalStart: addMinutes(prayers.Dhuhr, -45),
+      zawalEnd: prayers.Dhuhr,
+
+      sunsetStart: addMinutes(prayers.Maghrib, -45),
+      sunsetEnd: prayers.Maghrib,
+    };
+  }
+
+  const kerahat = $derived.by(() => {
+    return getKerahatTimes();
+  });
+
+
   onMount(async () => {
     window.addEventListener("beforeinstallprompt", (e) => {
       e.preventDefault();
@@ -237,10 +307,32 @@
     const cachedLocationId = localStorage.getItem("location-id");
 
     const cachedCity = localStorage.getItem("city");
+    const cachedLat = localStorage.getItem("lat");
+    const cachedLon = localStorage.getItem("lon");
+
+    const handleVisibility = () => {
+      if (!document.hidden) {
+        calculateNextPrayer();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    if (cachedLat && cachedLon) {
+      latitude = Number(cachedLat);
+      longitude = Number(cachedLon);
+    }
     if (cachedCity && cachedCity !== "undefined") {
       currentCity = cachedCity;
     }
     if (cachedLocationId) {
+      navigator.geolocation.getCurrentPosition((position) => {
+        latitude = position.coords.latitude;
+        longitude = position.coords.longitude;
+
+        localStorage.setItem("lat", latitude.toString());
+        localStorage.setItem("lon", longitude.toString());
+      });
       await fetchPrayerTimes(Number(cachedLocationId));
 
       fetchHadith();
@@ -253,6 +345,11 @@
         const lat = position.coords.latitude;
 
         const lon = position.coords.longitude;
+
+        latitude = lat;
+        longitude = lon;
+        localStorage.setItem("lat", lat.toString());
+        localStorage.setItem("lon", lon.toString());
 
         const city = await getCity(lat, lon);
         currentCity = city || "";
@@ -282,6 +379,8 @@
     );
     return () => {
       clearInterval(countdownInterval);
+
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   });
 
@@ -303,6 +402,10 @@
         const lat = position.coords.latitude;
 
         const lon = position.coords.longitude;
+        latitude = lat;
+        longitude = lon;
+        localStorage.setItem("lat", lat.toString());
+        localStorage.setItem("lon", lon.toString());
 
         const city = await getCity(lat, lon);
 
@@ -412,6 +515,63 @@
           </div>
         {/if}
       </div>
+
+      <!-- <div
+        class="mb-5 rounded-[32px] border border-orange-400/10 bg-orange-400/5 p-6 shadow-2xl backdrop-blur-xl"
+      >
+        <h2 class="mb-5 text-xl font-semibold text-orange-100">
+          Kerahat Vakitleri
+        </h2>
+
+        {#if loading}
+          <div class="space-y-4">
+            {#each Array(3) as _}
+              <div class="h-6 animate-pulse rounded bg-white/10"></div>
+            {/each}
+          </div>
+        {:else if latitude && longitude && kerahat}
+          <div class="space-y-4 text-sm">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="font-medium text-white">🌅 Kerahat Güneş</p>
+
+              </div>
+
+              <span class="text-orange-200">
+                {kerahat?.sunriseStart}
+                -
+                {kerahat?.sunriseEnd}
+              </span>
+            </div>
+
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="font-medium text-white">☀️ Kerahat Öğle</p>
+
+              </div>
+
+              <span class="text-orange-200">
+                {kerahat?.zawalStart}
+                -
+                {kerahat?.zawalEnd}
+              </span>
+            </div>
+
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="font-medium text-white">🌇 Kerahat Akşam</p>
+
+              </div>
+
+              <span class="text-orange-200">
+                {kerahat?.sunsetStart}
+                -
+                {kerahat?.sunsetEnd}
+              </span>
+            </div>
+          </div>
+        {/if}
+      </div> -->
 
       <div
         class="rounded-[32px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-xl"
