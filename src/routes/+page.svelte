@@ -145,6 +145,8 @@
       }
 
       if (prayerDate > now) {
+        console.log(prayerDate);
+
         nextPrayer = prayer.name;
         updateCountdown(prayerDate);
         return;
@@ -197,17 +199,7 @@
 
     const data = await response.json();
 
-    const now = new Date();
-
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, "0");
-    const day = String(now.getDate()).padStart(2, "0");
-
-    const today = `${year}-${month}-${day}`;
-
-    const timings = data.find((item: any) => {
-      return item.date.slice(0, 10) === today;
-    });
+    console.log(data);
 
     if (!Array.isArray(data)) {
       console.error("Prayer API returned invalid data:", data);
@@ -217,7 +209,11 @@
       return;
     }
 
+    const timings = data?.[0];
+
     if (!timings) {
+      console.error("No timings found for today");
+
       loading = false;
       return;
     }
@@ -293,11 +289,6 @@
       sunsetEnd: prayers.Maghrib,
     };
   }
-
-  const kerahat = $derived.by(() => {
-    return getKerahatTimes();
-  });
-
 
   onMount(async () => {
     window.addEventListener("beforeinstallprompt", (e) => {
@@ -529,44 +520,41 @@
               <div class="h-6 animate-pulse rounded bg-white/10"></div>
             {/each}
           </div>
-        {:else if latitude && longitude && kerahat}
+        {:else if latitude && longitude}
           <div class="space-y-4 text-sm">
             <div class="flex items-center justify-between">
               <div>
                 <p class="font-medium text-white">🌅 Kerahat Güneş</p>
-
               </div>
 
               <span class="text-orange-200">
-                {kerahat?.sunriseStart}
+                {getKerahatTimes()?.sunriseStart}
                 -
-                {kerahat?.sunriseEnd}
+                {getKerahatTimes()?.sunriseEnd}
               </span>
             </div>
 
             <div class="flex items-center justify-between">
               <div>
                 <p class="font-medium text-white">☀️ Kerahat Öğle</p>
-
               </div>
 
               <span class="text-orange-200">
-                {kerahat?.zawalStart}
+                {getKerahatTimes()?.zawalStart}
                 -
-                {kerahat?.zawalEnd}
+                {getKerahatTimes()?.zawalEnd}
               </span>
             </div>
 
             <div class="flex items-center justify-between">
               <div>
                 <p class="font-medium text-white">🌇 Kerahat Akşam</p>
-
               </div>
 
               <span class="text-orange-200">
-                {kerahat?.sunsetStart}
+                {getKerahatTimes()?.sunsetStart}
                 -
-                {kerahat?.sunsetEnd}
+                {getKerahatTimes()?.sunsetEnd}
               </span>
             </div>
           </div>
