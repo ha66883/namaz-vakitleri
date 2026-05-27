@@ -46,22 +46,51 @@
 
   let nowTime = $state(new Date());
 
-  let hijriDate = $derived.by(() => {
-    try {
-      // Verwendung der nativen Intl API für den türkischen Sprachraum mit islamischem Kalender
-      const formatter = new Intl.DateTimeFormat("tr-TR-u-ca-islamic-umalqura", {
-        day: "numeric",
-        month: "long", // Gibt den Monatsnamen aus (z.B. Ramazan, Şevval, Muharrem)
-        year: "numeric",
-      });
+  const ISLAMIC_MONTHS = [
+    "Muharrem", // 1
+    "Safer", // 2
+    "Rebiülevvel", // 3
+    "Rebiülahir", // 4
+    "Cemaziyelevvel", // 5
+    "Cemaziyelahir", // 6
+    "Receb", // 7
+    "Şaban", // 8
+    "Ramazan", // 9
+    "Şevval", // 10
+    "Zilkade", // 11
+    "Zilhicce", // 12
+  ];
 
-      return formatter.format(nowTime);
-    } catch (e) {
-      console.error("Hicri takvim hesaplanamadı:", e);
+  let hijriDate = $derived.by(() => {
+  try {
+    // Wir holen uns Tag, Monat und Jahr als reine, plattformunabhängige Zahlen
+    const dayFormatter = new Intl.DateTimeFormat("en-US-u-ca-islamic-umalqura", { day: "numeric" });
+    const monthFormatter = new Intl.DateTimeFormat("en-US-u-ca-islamic-umalqura", { month: "numeric" });
+    const yearFormatter = new Intl.DateTimeFormat("en-US-u-ca-islamic-umalqura", { year: "numeric" });
+
+    const rawDay = dayFormatter.format(nowTime).trim();
+    const rawMonth = monthFormatter.format(nowTime).trim();
+    const rawYear = yearFormatter.format(nowTime).trim();
+
+    // Bereinige eventuellen Text drumherum (z.B. "MÖ" oder "AH"), sodass nur die Zahlen übrig bleiben
+    const cleanDay = rawDay.match(/\d+/)?.[0] || "";
+    const cleanMonth = parseInt(rawMonth.match(/\d+/)?.[0] || "0", 10);
+    const cleanYear = rawYear.match(/\d+/)?.[0] || "";
+
+    if (!cleanDay || cleanMonth < 1 || cleanMonth > 12 || !cleanYear) {
       return "";
     }
-  });
 
+    // Wir mappen die Monatszahl (z.B. 12) auf unser eigenes Array (Index 11 = "Zilhicce")
+    const turkishMonthName = ISLAMIC_MONTHS[cleanMonth - 1];
+
+    // Gibt das Datum im exakten Format aus: "10 Zilhicce 1447"
+    return `${cleanDay} ${turkishMonthName} ${cleanYear}`;
+  } catch (e) {
+    console.error("Hicri takvim formatlama hatası:", e);
+    return "";
+  }
+});
   // Objekt mit den wichtigsten Feiertagen (Format: "Tag Monat")
   const ISLAMIC_HOLIDAYS: Record<
     string,
