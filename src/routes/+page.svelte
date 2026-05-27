@@ -2,7 +2,6 @@
   import { onMount } from "svelte";
   import logo from "$lib/assets/logo-goldd.png";
   import { hadiths } from "$lib/data/hadiths";
-  import * as SunCalc from "suncalc";
   type PrayerTimes = {
     Imsak: string;
     Sunrise: string;
@@ -45,6 +44,107 @@
   let latitude = $state<number | null>(null);
   let longitude = $state<number | null>(null);
 
+  let nowTime = $state(new Date());
+
+  let hijriDate = $derived.by(() => {
+    try {
+      // Verwendung der nativen Intl API für den türkischen Sprachraum mit islamischem Kalender
+      const formatter = new Intl.DateTimeFormat("tr-TR-u-ca-islamic-umalqura", {
+        day: "numeric",
+        month: "long", // Gibt den Monatsnamen aus (z.B. Ramazan, Şevval, Muharrem)
+        year: "numeric",
+      });
+
+      return formatter.format(nowTime);
+    } catch (e) {
+      console.error("Hicri takvim hesaplanamadı:", e);
+      return "";
+    }
+  });
+
+  // Objekt mit den wichtigsten Feiertagen (Format: "Tag Monat")
+  const ISLAMIC_HOLIDAYS: Record<
+    string,
+    { name: string; icon: string; isBayram: boolean }
+  > = {
+    "1 Ramazan": {
+      name: "Ramazan-ı Şerif Başlangıcı",
+      icon: "🌙",
+      isBayram: false,
+    },
+    "26 Ramazan": { name: "Kadir Gecesi", icon: "✨", isBayram: false },
+    "1 Şevval": {
+      name: "Ramazan Bayramı (1. Gün)",
+      icon: "🍬",
+      isBayram: true,
+    },
+    "2 Şevval": {
+      name: "Ramazan Bayramı (2. Gün)",
+      icon: "🍬",
+      isBayram: true,
+    },
+    "3 Şevval": {
+      name: "Ramazan Bayramı (3. Gün)",
+      icon: "🍬",
+      isBayram: true,
+    },
+    "9 Zilhicce": {
+      name: "Kurban Bayramı Arifesi",
+      icon: "🤲",
+      isBayram: false,
+    },
+    "10 Zilhicce": {
+      name: "Kurban Bayramı (1. Gün)",
+      icon: "🐑",
+      isBayram: true,
+    },
+    "11 Zilhicce": {
+      name: "Kurban Bayramı (2. Gün)",
+      icon: "🐑",
+      isBayram: true,
+    },
+    "12 Zilhicce": {
+      name: "Kurban Bayramı (3. Gün)",
+      icon: "🐑",
+      isBayram: true,
+    },
+    "13 Zilhicce": {
+      name: "Kurban Bayramı (4. Gün)",
+      icon: "🐑",
+      isBayram: true,
+    },
+    "1 Muharrem": { name: "Hicri Yılbaşı", icon: "🗓️", isBayram: false },
+    "10 Muharrem": { name: "Aşure Günü", icon: "🥣", isBayram: false },
+    "26 Receb": { name: "Mirac Kandili", icon: "🌹", isBayram: false },
+    "14 Şaban": { name: "Berat Kandili", icon: "🕯️", isBayram: false },
+    "12 Rebiülevvel": { name: "Mevlid Kandili", icon: "🕌", isBayram: false },
+  };
+
+  let currentHoliday = $derived.by(() => {
+    if (!hijriDate) return null;
+
+    // 1. Bereinige den String von Sonderzeichen und splitte ihn in Wörter
+    const parts = hijriDate
+      .replace(/[^a-zA-Z0-9çğıöşüÇĞİÖŞÜ ]/g, "")
+      .split(/\s+/);
+
+    // 2. Finde den Index, an dem die Zahl (der Tag) steht
+    // Das ignoriert ein vorangestelltes "Hicri" flexibel, egal an welcher Stelle es steht
+    const dayIndex = parts.findIndex((p) => !isNaN(Number(p)));
+
+    if (dayIndex === -1 || dayIndex + 1 >= parts.length) return null;
+
+    const day = parts[dayIndex]; // Holt die Zahl, z.B. "10"
+    const month = parts[dayIndex + 1]; // Holt das Wort danach, z.B. "Zilhicce"
+
+    const key = `${day} ${month}`; // Ergibt jetzt garantiert "10 Zilhicce"
+
+    console.log("Korrigierter Hicri-Schlüssel:", key); // Zeigt jetzt "10 Zilhicce" an
+
+    return ISLAMIC_HOLIDAYS[key] || null;
+  });
+
+
   async function installApp() {
     if (!deferredPrompt) return;
     deferredPrompt.prompt();
@@ -82,7 +182,6 @@
 
   function getPrayerDate(time?: string) {
     if (!time) {
-      console.error("Prayer time missing:", time);
       return new Date(NaN);
     }
 
@@ -140,13 +239,10 @@
       const prayerDate = getPrayerDate(prayer.time);
 
       if (isNaN(prayerDate.getTime())) {
-        console.error("Invalid prayer date:", prayer);
         continue;
       }
 
       if (prayerDate > now) {
-        console.log(prayerDate);
-
         nextPrayer = prayer.name;
         updateCountdown(prayerDate);
         return;
@@ -172,6 +268,7 @@
 
     countdownInterval = setInterval(() => {
       const now = new Date();
+      nowTime = new Date();
 
       const diff = target.getTime() - now.getTime();
 
@@ -198,8 +295,6 @@
     const response = await fetch(`/api/prayer-times?locationId=${locationId}`);
 
     const data = await response.json();
-
-    console.log(data);
 
     if (!Array.isArray(data)) {
       console.error("Prayer API returned invalid data:", data);
@@ -259,24 +354,9 @@
   }
 
   function getKerahatTimes() {
-    console.log("hier:", latitude, longitude);
-    if (latitude === null || longitude === null) {
+    if (!prayers.Sunrise || !prayers.Dhuhr || !prayers.Maghrib) {
       return null;
     }
-
-    const today = new Date();
-
-    const times = SunCalc.getTimes(today, latitude, longitude);
-
-    const sunrise = times.sunrise;
-    const sunset = times.sunset;
-    const solarNoon = times.solarNoon;
-
-    const sunriseEnd = new Date(sunrise.getTime() + 45 * 60 * 1000);
-
-    const sunsetStart = new Date(sunset.getTime() - 45 * 60 * 1000);
-
-    const zawalStart = new Date(solarNoon.getTime() - 45 * 60 * 1000);
 
     return {
       sunriseStart: prayers.Sunrise,
@@ -288,6 +368,20 @@
       sunsetStart: addMinutes(prayers.Maghrib, -45),
       sunsetEnd: prayers.Maghrib,
     };
+  }
+
+  function isKerahatActive(startTime?: string, endTime?: string): boolean {
+    if (!startTime || !endTime) return false;
+
+    const current = nowTime;
+    // Start- und Endzeit für das heutige Datum generieren
+    const start = getPrayerDate(startTime);
+    const end = getPrayerDate(endTime);
+
+    if (isNaN(start.getTime()) || !end.getTime()) return false;
+
+    // Prüfen, ob wir uns JETZT genau dazwischen befinden
+    return current >= start && current <= end;
   }
 
   onMount(async () => {
@@ -507,7 +601,7 @@
         {/if}
       </div>
 
-      <!-- <div
+      <div
         class="mb-5 rounded-[32px] border border-orange-400/10 bg-orange-400/5 p-6 shadow-2xl backdrop-blur-xl"
       >
         <h2 class="mb-5 text-xl font-semibold text-orange-100">
@@ -520,46 +614,169 @@
               <div class="h-6 animate-pulse rounded bg-white/10"></div>
             {/each}
           </div>
-        {:else if latitude && longitude}
-          <div class="space-y-4 text-sm">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="font-medium text-white">🌅 Kerahat Güneş</p>
+        {:else}
+          {@const times = getKerahatTimes()}
+
+          {#if times}
+            {@const isGunesActive = isKerahatActive(
+              times.sunriseStart,
+              times.sunriseEnd,
+            )}
+            {@const isOgleActive = isKerahatActive(
+              times.zawalStart,
+              times.zawalEnd,
+            )}
+            {@const isAksamActive = isKerahatActive(
+              times.sunsetStart,
+              times.sunsetEnd,
+            )}
+            <div class="space-y-3 text-sm">
+              <!-- 1. Güneş -->
+              <div
+                class="flex items-center justify-between p-2 rounded-xl transition-all duration-300 {isGunesActive
+                  ? 'bg-orange-500/15 border border-orange-500/20 shadow-lg shadow-orange-500/5'
+                  : ''}"
+              >
+                <div class="flex items-center gap-2">
+                  <p class="font-medium text-white">🌅 Kerahat Güneş</p>
+                  {#if isGunesActive}
+                    <span
+                      class="inline-flex items-center gap-1 rounded-full bg-orange-500/20 px-2 py-0.5 text-xs font-medium text-orange-300 animate-pulse"
+                    >
+                      <span class="h-1.5 w-1.5 rounded-full bg-orange-400"
+                      ></span>
+                      Aktif
+                    </span>
+                  {/if}
+                </div>
+                <span
+                  class={isGunesActive
+                    ? "text-orange-300 font-semibold"
+                    : "text-orange-200"}
+                >
+                  {times.sunriseStart} - {times.sunriseEnd}
+                </span>
               </div>
 
-              <span class="text-orange-200">
-                {getKerahatTimes()?.sunriseStart}
-                -
-                {getKerahatTimes()?.sunriseEnd}
-              </span>
+              <!-- 2. Öğle -->
+
+              <div
+                class="flex items-center justify-between p-2 rounded-xl transition-all duration-300 {isOgleActive
+                  ? 'bg-orange-500/15 border border-orange-500/20 shadow-lg shadow-orange-500/5'
+                  : ''}"
+              >
+                <div class="flex items-center gap-2">
+                  <p class="font-medium text-white">☀️ Kerahat Öğle</p>
+                  {#if isOgleActive}
+                    <span
+                      class="inline-flex items-center gap-1 rounded-full bg-orange-500/20 px-2 py-0.5 text-xs font-medium text-orange-300 animate-pulse"
+                    >
+                      <span class="h-1.5 w-1.5 rounded-full bg-orange-400"
+                      ></span>
+                      Aktif
+                    </span>
+                  {/if}
+                </div>
+                <span
+                  class={isOgleActive
+                    ? "text-orange-300 font-semibold"
+                    : "text-orange-200"}
+                >
+                  {times.zawalStart} - {times.zawalEnd}
+                </span>
+              </div>
+
+              <!-- 3. Akşam -->
+
+              <div
+                class="flex items-center justify-between p-2 rounded-xl transition-all duration-300 {isAksamActive
+                  ? 'bg-orange-500/15 border border-orange-500/20 shadow-lg shadow-orange-500/5'
+                  : ''}"
+              >
+                <div class="flex items-center gap-2">
+                  <p class="font-medium text-white">🌇 Kerahat Akşam</p>
+                  {#if isAksamActive}
+                    <span
+                      class="inline-flex items-center gap-1 rounded-full bg-orange-500/20 px-2 py-0.5 text-xs font-medium text-orange-300 animate-pulse"
+                    >
+                      <span class="h-1.5 w-1.5 rounded-full bg-orange-400"
+                      ></span>
+                      Aktif
+                    </span>
+                  {/if}
+                </div>
+                <span
+                  class={isAksamActive
+                    ? "text-orange-300 font-semibold"
+                    : "text-orange-200"}
+                >
+                  {times.sunsetStart} - {times.sunsetEnd}
+                </span>
+              </div>
             </div>
+          {:else}
+            <p class="text-sm text-orange-300/70 italic text-center">
+              Konum bilgisi veya vakitler yüklenemedi.
+            </p>
+          {/if}
+        {/if}
+      </div>
 
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="font-medium text-white">☀️ Kerahat Öğle</p>
-              </div>
-
-              <span class="text-orange-200">
-                {getKerahatTimes()?.zawalStart}
-                -
-                {getKerahatTimes()?.zawalEnd}
-              </span>
+      <!-- Hicri Takvim & Mübarek Günler Banner -->
+      <div
+        class="mb-4 flex flex-col gap-3 rounded-2xl border transition-all duration-500 p-5 backdrop-blur-md
+  {currentHoliday?.isBayram
+          ? 'border-emerald-500/20 bg-emerald-500/10 shadow-lg shadow-emerald-500/5'
+          : currentHoliday
+            ? 'border-amber-500/20 bg-amber-500/10 shadow-lg shadow-amber-500/5'
+            : 'border-white/5 bg-white/5'}"
+      >
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="text-xl">🌙</span>
+            <div>
+              <p
+                class="text-xs font-medium text-orange-300/75 uppercase tracking-wider"
+              >
+                Hicrî Tarih
+              </p>
+              <p class="text-sm font-semibold text-white">
+                {#if hijriDate}
+                  {hijriDate}
+                {:else}
+                  Yükleniyor...
+                {/if}
+              </p>
             </div>
+          </div>
 
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="font-medium text-white">🌇 Kerahat Akşam</p>
-              </div>
+          <span
+            class="text-xs bg-white/10 text-white/60 px-2 py-1 rounded-md font-mono"
+          >
+            {nowTime.getFullYear()}
+          </span>
+        </div>
 
-              <span class="text-orange-200">
-                {getKerahatTimes()?.sunsetStart}
-                -
-                {getKerahatTimes()?.sunsetEnd}
+        <!-- Wenn heute ein besonderer Tag oder Feiertag ist -->
+        {#if currentHoliday}
+          <div
+            class="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium border animate-pulse
+      {currentHoliday.isBayram
+              ? 'bg-emerald-500/20 border-emerald-400/35 text-emerald-200'
+              : 'bg-amber-500/20 border-amber-400/35 text-amber-200'}"
+          >
+            <span class="text-sm">{currentHoliday.icon}</span>
+            <div>
+              <span class="block text-[10px] uppercase opacity-75">
+                {currentHoliday.isBayram
+                  ? "Mübarek Bayram"
+                  : "Mübarek Gece / Gün"}
               </span>
+              <span class="text-sm font-bold">{currentHoliday.name}</span>
             </div>
           </div>
         {/if}
-      </div> -->
+      </div>
 
       <div
         class="rounded-[32px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-xl"
