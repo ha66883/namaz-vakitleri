@@ -200,7 +200,7 @@
   function handleOrientation(event: DeviceOrientationEvent) {
     // FEINJUSTIERUNG: Wir ändern den Abzug von 90 auf 70 Grad,
     // um den magnetischen Deklinationsfehler deines Standorts auszugleichen.
-    const fineTuningOffset = 125;
+    const fineTuningOffset = 135;
 
     if ("webkitCompassHeading" in event) {
       // iOS / Safari
