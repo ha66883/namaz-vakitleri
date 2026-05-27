@@ -44,6 +44,13 @@
   let latitude = $state<number | null>(null);
   let longitude = $state<number | null>(null);
 
+  const KAABA_LAT = 21.42252;
+  const KAABA_LON = 39.82618;
+
+  let liveCompassActive = $state(false);
+  let deviceHeading = $state(0); // Wohin das Handy gerade schaut (0 = Nord)
+  let compassPermissionDenied = $state(false);
+
   let nowTime = $state(new Date());
 
   const ISLAMIC_MONTHS = [
@@ -62,35 +69,44 @@
   ];
 
   let hijriDate = $derived.by(() => {
-  try {
-    // Wir holen uns Tag, Monat und Jahr als reine, plattformunabhängige Zahlen
-    const dayFormatter = new Intl.DateTimeFormat("en-US-u-ca-islamic-umalqura", { day: "numeric" });
-    const monthFormatter = new Intl.DateTimeFormat("en-US-u-ca-islamic-umalqura", { month: "numeric" });
-    const yearFormatter = new Intl.DateTimeFormat("en-US-u-ca-islamic-umalqura", { year: "numeric" });
+    try {
+      // Wir holen uns Tag, Monat und Jahr als reine, plattformunabhängige Zahlen
+      const dayFormatter = new Intl.DateTimeFormat(
+        "en-US-u-ca-islamic-umalqura",
+        { day: "numeric" },
+      );
+      const monthFormatter = new Intl.DateTimeFormat(
+        "en-US-u-ca-islamic-umalqura",
+        { month: "numeric" },
+      );
+      const yearFormatter = new Intl.DateTimeFormat(
+        "en-US-u-ca-islamic-umalqura",
+        { year: "numeric" },
+      );
 
-    const rawDay = dayFormatter.format(nowTime).trim();
-    const rawMonth = monthFormatter.format(nowTime).trim();
-    const rawYear = yearFormatter.format(nowTime).trim();
+      const rawDay = dayFormatter.format(nowTime).trim();
+      const rawMonth = monthFormatter.format(nowTime).trim();
+      const rawYear = yearFormatter.format(nowTime).trim();
 
-    // Bereinige eventuellen Text drumherum (z.B. "MÖ" oder "AH"), sodass nur die Zahlen übrig bleiben
-    const cleanDay = rawDay.match(/\d+/)?.[0] || "";
-    const cleanMonth = parseInt(rawMonth.match(/\d+/)?.[0] || "0", 10);
-    const cleanYear = rawYear.match(/\d+/)?.[0] || "";
+      // Bereinige eventuellen Text drumherum (z.B. "MÖ" oder "AH"), sodass nur die Zahlen übrig bleiben
+      const cleanDay = rawDay.match(/\d+/)?.[0] || "";
+      const cleanMonth = parseInt(rawMonth.match(/\d+/)?.[0] || "0", 10);
+      const cleanYear = rawYear.match(/\d+/)?.[0] || "";
 
-    if (!cleanDay || cleanMonth < 1 || cleanMonth > 12 || !cleanYear) {
+      if (!cleanDay || cleanMonth < 1 || cleanMonth > 12 || !cleanYear) {
+        return "";
+      }
+
+      // Wir mappen die Monatszahl (z.B. 12) auf unser eigenes Array (Index 11 = "Zilhicce")
+      const turkishMonthName = ISLAMIC_MONTHS[cleanMonth - 1];
+
+      // Gibt das Datum im exakten Format aus: "10 Zilhicce 1447"
+      return `${cleanDay} ${turkishMonthName} ${cleanYear}`;
+    } catch (e) {
+      console.error("Hicri takvim formatlama hatası:", e);
       return "";
     }
-
-    // Wir mappen die Monatszahl (z.B. 12) auf unser eigenes Array (Index 11 = "Zilhicce")
-    const turkishMonthName = ISLAMIC_MONTHS[cleanMonth - 1];
-
-    // Gibt das Datum im exakten Format aus: "10 Zilhicce 1447"
-    return `${cleanDay} ${turkishMonthName} ${cleanYear}`;
-  } catch (e) {
-    console.error("Hicri takvim formatlama hatası:", e);
-    return "";
-  }
-});
+  });
   // Objekt mit den wichtigsten Feiertagen (Format: "Tag Monat")
   const ISLAMIC_HOLIDAYS: Record<
     string,
@@ -141,6 +157,98 @@
       return null;
     }
   });
+
+  // Berechnet den STATISCHEN Winkel zu Mekka basierend auf den Nutzer-Koordinaten
+  let qiblaAngle = $derived.by(() => {
+    if (latitude === null || longitude === null) return null;
+
+    // Umrechnung in Bogenmaß (Radiant)
+    const lat1 = (latitude * Math.PI) / 180;
+    const lon1 = (longitude * Math.PI) / 180;
+    const lat2 = (KAABA_LAT * Math.PI) / 180;
+    const lon2 = (KAABA_LON * Math.PI) / 180;
+
+    const dLon = lon2 - lon1;
+
+    const y = Math.sin(dLon) * Math.cos(lat2);
+    const x =
+      Math.cos(lat1) * Math.sin(lat2) -
+      Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+
+    let brng = Math.atan2(y, x);
+    brng = (brng * 180) / Math.PI;
+    brng = (brng + 360) % 360; // Normalisieren auf 0-360°
+
+    return Math.round(brng);
+  });
+
+  // Berechnet den DYNAMISCHEN Rotations-Winkel für die Kompassnadel im Live-Modus
+  let visualNeedleRotation = $derived.by(() => {
+    if (qiblaAngle === null) return 0;
+    if (!liveCompassActive) return qiblaAngle; // Im statischen Modus zeigt der Pfeil einfach den festen Winkel
+
+    // Im Live-Modus: Ziehe die Handy-Blickrichtung vom Qibla-Winkel ab
+    return (qiblaAngle - deviceHeading + 360) % 360;
+  });
+
+  // Verarbeitet die Sensordaten des Smartphones
+  function handleOrientation(event: DeviceOrientationEvent) {
+    // iOS Safari nutzt webkitCompassHeading
+    if ("webkitCompassHeading" in event) {
+      deviceHeading = (event as any).webkitCompassHeading;
+    } else if (event.alpha !== null) {
+      // Android nutzt alpha (Achtung: oft entgegengesetzt, daher Anpassung)
+      deviceHeading = 360 - event.alpha;
+    }
+  }
+
+  // Aktiviert den echten Live-Kompass mit Berechtigungs-Abfrage
+  async function startLiveCompass() {
+    if (typeof window === "undefined") return;
+
+    // 1. iOS Spezifische Abfrage (ab iOS 13+)
+    if (
+      typeof DeviceOrientationEvent !== "undefined" &&
+      typeof (DeviceOrientationEvent as any).requestPermission === "function"
+    ) {
+      try {
+        const permission = await (
+          DeviceOrientationEvent as any
+        ).requestPermission();
+        if (permission === "granted") {
+          window.addEventListener("deviceorientation", handleOrientation, true);
+          liveCompassActive = true;
+        } else {
+          compassPermissionDenied = true;
+        }
+      } catch (e) {
+        console.error("iOS Sensorenabfrage fehlgeschlagen:", e);
+      }
+    } else {
+      // 2. Android & Desktop (Fragt keine extra Permission ab)
+      if ("ondeviceorientation" in window || "deviceorientation" in window) {
+        window.addEventListener("deviceorientation", handleOrientation, true);
+        liveCompassActive = true;
+
+        // Kurzer Check, ob der Sensor überhaupt Werte liefert (Desktop-Fallback)
+        setTimeout(() => {
+          if (deviceHeading === 0 && liveCompassActive) {
+            // Wenn nach 1 Sekunde exakt 0 steht, hat das Gerät vermutlich keinen Sensor
+            console.log("Sensor liefert keine Daten. Vermutlich Desktop.");
+          }
+        }, 1000);
+      } else {
+        compassPermissionDenied = true;
+      }
+    }
+  }
+
+  function stopLiveCompass() {
+    if (typeof window !== "undefined") {
+      window.removeEventListener("deviceorientation", handleOrientation, true);
+    }
+    liveCompassActive = false;
+  }
 
   async function installApp() {
     if (!deferredPrompt) return;
@@ -770,6 +878,114 @@
                   : "Mübarek Gece / Gün"}
               </span>
               <span class="text-sm font-bold">{currentHoliday.name}</span>
+            </div>
+          </div>
+        {/if}
+      </div>
+
+      <div
+        class="mb-5 rounded-[32px] border border-orange-400/10 bg-orange-400/5 p-6 shadow-2xl backdrop-blur-xl"
+      >
+        <div class="flex items-center justify-between mb-5">
+          <h2 class="text-xl font-semibold text-orange-100">Kıble Yönü</h2>
+          {#if qiblaAngle !== null}
+            <span
+              class="text-xs bg-orange-500/20 text-orange-300 font-mono px-2 py-1 rounded-md border border-orange-500/20"
+            >
+              {qiblaAngle}° N
+            </span>
+          {/if}
+        </div>
+
+        {#if loading}
+          <div class="flex flex-col items-center py-6 space-y-4">
+            <div class="h-24 w-24 animate-pulse rounded-full bg-white/10"></div>
+          </div>
+        {:else}
+          <div class="flex flex-col items-center justify-center space-y-6">
+            <!-- Der visuelle Kompass-Kreis -->
+            <div
+              class="relative w-36 h-36 rounded-full border-2 border-dashed border-white/20 flex items-center justify-center bg-white/5 shadow-inner"
+            >
+              <!-- Nord-Markierung (hilft im Live-Modus) -->
+              <span
+                class="absolute top-1 text-[10px] font-bold text-white/40 font-mono"
+                >N</span
+              >
+              <span
+                class="absolute bottom-1 text-[10px] font-bold text-white/20 font-mono"
+                >S</span
+              >
+
+              <!-- Die rotierende Kompassnadel (Nutzt Svelte 5 state für Inline-Style) -->
+              <div
+                class="w-full h-full flex items-center justify-center transition-transform duration-200 ease-out"
+                style="transform: rotate({visualNeedleRotation}deg);"
+              >
+                <!-- Der Pfeil: Zeigt im statischen Modus auf den Winkel, im Live-Modus nach Mekka -->
+                <div
+                  class="relative w-2 h-28 flex flex-col justify-between items-center"
+                >
+                  <!-- Spitze (Mekka-Richtung) -->
+                  <div
+                    class="w-0 h-0 border-l-[8px] border-r-[8px] border-b-[24px] border-l-transparent border-r-transparent border-b-orange-400 drop-shadow-[0_0_8px_rgba(251,146,60,0.6)]"
+                  ></div>
+                  <!-- Kaaba-Mini-Icon direkt auf der Spitze -->
+                  <span class="absolute -top-6 text-sm">🕋</span>
+                  <!-- Unteres Ende der Nadel -->
+                  <div
+                    class="w-0 h-0 border-l-[6px] border-r-[6px] border-t-[18px] border-l-transparent border-r-transparent border-t-white/30"
+                  ></div>
+                </div>
+              </div>
+
+              <!-- Zentraler Pin -->
+              <div
+                class="absolute w-3 h-3 bg-white rounded-full border border-orange-500 shadow-md"
+              ></div>
+            </div>
+
+            <!-- Textuelle Info & Steuerungs-Button -->
+            <div class="w-full text-center space-y-3">
+              {#if !liveCompassActive}
+                <p
+                  class="text-xs text-orange-200/70 max-w-[240px] mx-auto leading-relaxed"
+                >
+                  Bulunduğunuz konumdan Kıble açısı kuzeyden saat yönüne doğru <span
+                    class="text-orange-300 font-bold font-mono"
+                    >{qiblaAngle}°</span
+                  > derecedir.
+                </p>
+                <button
+                  onclick={startLiveCompass}
+                  class="w-full py-2.5 px-4 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-medium text-sm rounded-xl shadow-lg shadow-orange-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                >
+                  🧭 Canlı Kıble Modu
+                </button>
+              {:else}
+                <div
+                  class="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-300 animate-pulse border border-emerald-500/30"
+                >
+                  <span class="h-2 w-2 rounded-full bg-emerald-400"></span>
+                  Canlı Pusula Aktif
+                </div>
+                <p class="text-xs text-emerald-200/80 max-w-[240px] mx-auto">
+                  Telefonunuzu düz tutun. 🕋 İkonu tam yukarı geldiğinde Kıbleye
+                  yönelmiş olursunuz.
+                </p>
+                <button
+                  onclick={stopLiveCompass}
+                  class="w-full py-2 px-4 bg-white/10 hover:bg-white/15 text-white/90 text-xs font-medium rounded-xl border border-white/10 transition-all"
+                >
+                  Modu Kapat
+                </button>
+              {/if}
+
+              {#if compassPermissionDenied}
+                <p class="text-xs text-red-400 font-medium">
+                  ⚠️ Pusula sensör izni reddedildi veya cihazınız desteklemiyor.
+                </p>
+              {/if}
             </div>
           </div>
         {/if}
