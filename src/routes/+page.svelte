@@ -198,17 +198,15 @@
   );
 
   function handleOrientation(event: DeviceOrientationEvent) {
-    // FEINJUSTIERUNG: Wir ändern den Abzug von 90 auf 70 Grad,
-    // um den magnetischen Deklinationsfehler deines Standorts auszugleichen.
-    const fineTuningOffset = 135;
-
     if ("webkitCompassHeading" in event) {
-      // iOS / Safari
-      let heading = (event as any).webkitCompassHeading - fineTuningOffset;
+      // 🍏 iPHONE / SAFARI: Perfekt kalibriert
+      // Verhindert das Mitdrehen (Invertierung) und gleicht den Versatz aus
+      const rawHeading = (event as any).webkitCompassHeading;
+      let heading = 360 - rawHeading + 35;
       deviceHeading = (heading + 360) % 360;
     } else if (event.alpha !== null) {
-      // Android / Chrome
-      let heading = event.alpha - fineTuningOffset;
+      // 🤖 ANDROID / CHROME: Perfekt kalibriert (Dein getesteter Wunschwert!)
+      let heading = event.alpha - 135;
       deviceHeading = (heading + 360) % 360;
     }
   }
