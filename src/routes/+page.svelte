@@ -191,22 +191,25 @@
     return (deviceHeading + qiblaAngle + 360) % 360;
   });
 
-    // Prüft reaktiv, ob der Live-Modus aktiv ist und die Nadel nach oben zeigt (+-3 Grad Toleranz)
+  // Prüft reaktiv, ob der Live-Modus aktiv ist und die Nadel nach oben zeigt (+-3 Grad Toleranz)
   let isAligned = $derived(
-    liveCompassActive && (visualNeedleRotation <= 3 || visualNeedleRotation >= 357)
+    liveCompassActive &&
+      (visualNeedleRotation <= 3 || visualNeedleRotation >= 357),
   );
 
-  // Verarbeitet die Sensordaten des Smartphones
   function handleOrientation(event: DeviceOrientationEvent) {
-    // iOS Safari nutzt webkitCompassHeading
     if ("webkitCompassHeading" in event) {
-      deviceHeading = (event as any).webkitCompassHeading;
+      // iOS / Safari
+      // Wir ziehen 90 Grad ab, um den Hochformat-Versatz auszugleichen
+      let heading = (event as any).webkitCompassHeading - 90;
+      deviceHeading = (heading + 360) % 360;
     } else if (event.alpha !== null) {
-      // Android nutzt alpha (Achtung: oft entgegengesetzt, daher Anpassung)
-      deviceHeading = event.alpha;
+      // Android / Chrome
+      // Hier korrigieren wir ebenfalls um den 90-Grad-Achsenversatz
+      let heading = event.alpha - 90;
+      deviceHeading = (heading + 360) % 360;
     }
   }
-
   // Aktiviert den echten Live-Kompass mit Berechtigungs-Abfrage
   async function startLiveCompass() {
     if (typeof window === "undefined") return;
