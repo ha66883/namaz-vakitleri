@@ -198,15 +198,17 @@
   );
 
   function handleOrientation(event: DeviceOrientationEvent) {
+    // FEINJUSTIERUNG: Wir ändern den Abzug von 90 auf 70 Grad,
+    // um den magnetischen Deklinationsfehler deines Standorts auszugleichen.
+    const fineTuningOffset = 65;
+
     if ("webkitCompassHeading" in event) {
       // iOS / Safari
-      // Wir ziehen 90 Grad ab, um den Hochformat-Versatz auszugleichen
-      let heading = (event as any).webkitCompassHeading - 90;
+      let heading = (event as any).webkitCompassHeading - fineTuningOffset;
       deviceHeading = (heading + 360) % 360;
     } else if (event.alpha !== null) {
       // Android / Chrome
-      // Hier korrigieren wir ebenfalls um den 90-Grad-Achsenversatz
-      let heading = event.alpha - 90;
+      let heading = event.alpha - fineTuningOffset;
       deviceHeading = (heading + 360) % 360;
     }
   }
