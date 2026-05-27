@@ -67,83 +67,51 @@
     string,
     { name: string; icon: string; isBayram: boolean }
   > = {
-    "1 Ramazan": {
-      name: "Ramazan-ı Şerif Başlangıcı",
-      icon: "🌙",
-      isBayram: false,
-    },
-    "26 Ramazan": { name: "Kadir Gecesi", icon: "✨", isBayram: false },
-    "1 Şevval": {
-      name: "Ramazan Bayramı (1. Gün)",
-      icon: "🍬",
-      isBayram: true,
-    },
-    "2 Şevval": {
-      name: "Ramazan Bayramı (2. Gün)",
-      icon: "🍬",
-      isBayram: true,
-    },
-    "3 Şevval": {
-      name: "Ramazan Bayramı (3. Gün)",
-      icon: "🍬",
-      isBayram: true,
-    },
-    "9 Zilhicce": {
-      name: "Kurban Bayramı Arifesi",
-      icon: "🤲",
-      isBayram: false,
-    },
-    "10 Zilhicce": {
-      name: "Kurban Bayramı (1. Gün)",
-      icon: "🐑",
-      isBayram: true,
-    },
-    "11 Zilhicce": {
-      name: "Kurban Bayramı (2. Gün)",
-      icon: "🐑",
-      isBayram: true,
-    },
-    "12 Zilhicce": {
-      name: "Kurban Bayramı (3. Gün)",
-      icon: "🐑",
-      isBayram: true,
-    },
-    "13 Zilhicce": {
-      name: "Kurban Bayramı (4. Gün)",
-      icon: "🐑",
-      isBayram: true,
-    },
-    "1 Muharrem": { name: "Hicri Yılbaşı", icon: "🗓️", isBayram: false },
-    "10 Muharrem": { name: "Aşure Günü", icon: "🥣", isBayram: false },
-    "26 Receb": { name: "Mirac Kandili", icon: "🌹", isBayram: false },
-    "14 Şaban": { name: "Berat Kandili", icon: "🕯️", isBayram: false },
-    "12 Rebiülevvel": { name: "Mevlid Kandili", icon: "🕌", isBayram: false },
+    "1-9": { name: "Ramazan-ı Şerif Başlangıcı", icon: "🌙", isBayram: false },
+    "26-9": { name: "Kadir Gecesi", icon: "✨", isBayram: false },
+    "1-10": { name: "Ramazan Bayramı (1. Gün)", icon: "🍬", isBayram: true },
+    "2-10": { name: "Ramazan Bayramı (2. Gün)", icon: "🍬", isBayram: true },
+    "3-10": { name: "Ramazan Bayramı (3. Gün)", icon: "🍬", isBayram: true },
+    "9-12": { name: "Kurban Bayramı Arifesi", icon: "🤲", isBayram: false },
+    "10-12": { name: "Kurban Bayramı (1. Gün)", icon: "🐑", isBayram: true }, // HEUTE!
+    "11-12": { name: "Kurban Bayramı (2. Gün)", icon: "🐑", isBayram: true }, // MORGEN!
+    "12-12": { name: "Kurban Bayramı (3. Gün)", icon: "🐑", isBayram: true },
+    "13-12": { name: "Kurban Bayramı (4. Gün)", icon: "🐑", isBayram: true },
+    "1-1": { name: "Hicri Yılbaşı", icon: "🗓️", isBayram: false },
+    "10-1": { name: "Aşure Günü", icon: "🥣", isBayram: false },
+    "26-7": { name: "Mirac Kandili", icon: "🌹", isBayram: false },
+    "14-8": { name: "Berat Kandili", icon: "🕯️", isBayram: false },
+    "12-3": { name: "Mevlid Kandili", icon: "🕌", isBayram: false },
   };
 
   let currentHoliday = $derived.by(() => {
-    if (!hijriDate) return null;
+    try {
+      // Wir holen Tag und Monat numerisch direkt aus der Core-API des Systems
+      const dayFormatter = new Intl.DateTimeFormat(
+        "en-US-u-ca-islamic-umalqura",
+        { day: "numeric" },
+      );
+      const monthFormatter = new Intl.DateTimeFormat(
+        "en-US-u-ca-islamic-umalqura",
+        { month: "numeric" },
+      );
 
-    // 1. Bereinige den String von Sonderzeichen und splitte ihn in Wörter
-    const parts = hijriDate
-      .replace(/[^a-zA-Z0-9çğıöşüÇĞİÖŞÜ ]/g, "")
-      .split(/\s+/);
+      // en-US sorgt dafür, dass wir reine, unformatierte West-Zahlen erhalten
+      const hijriDay = dayFormatter.format(nowTime).trim();
+      const hijriMonth = monthFormatter.format(nowTime).trim();
 
-    // 2. Finde den Index, an dem die Zahl (der Tag) steht
-    // Das ignoriert ein vorangestelltes "Hicri" flexibel, egal an welcher Stelle es steht
-    const dayIndex = parts.findIndex((p) => !isNaN(Number(p)));
+      // Verhindert Abstürze, falls der String zusätzliche Zeichen enthält (z.B. "1447 AH")
+      const cleanDay = hijriDay.match(/\d+/)?.[0] || "";
+      const cleanMonth = hijriMonth.match(/\d+/)?.[0] || "";
 
-    if (dayIndex === -1 || dayIndex + 1 >= parts.length) return null;
+      const key = `${cleanDay}-${cleanMonth}`; // Ergibt heute am Handy & PC exakt: "10-12"
 
-    const day = parts[dayIndex]; // Holt die Zahl, z.B. "10"
-    const month = parts[dayIndex + 1]; // Holt das Wort danach, z.B. "Zilhicce"
-
-    const key = `${day} ${month}`; // Ergibt jetzt garantiert "10 Zilhicce"
-
-    console.log("Korrigierter Hicri-Schlüssel:", key); // Zeigt jetzt "10 Zilhicce" an
-
-    return ISLAMIC_HOLIDAYS[key] || null;
+      return ISLAMIC_HOLIDAYS[key] || null;
+    } catch (e) {
+      console.error("Hicri bayram hesaplama hatası:", e);
+      return null;
+    }
   });
-
 
   async function installApp() {
     if (!deferredPrompt) return;
