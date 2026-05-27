@@ -202,11 +202,11 @@
       // 🍏 iPHONE / SAFARI: Perfekt kalibriert
       // Verhindert das Mitdrehen (Invertierung) und gleicht den Versatz aus
       const rawHeading = (event as any).webkitCompassHeading;
-      let heading = 360 - rawHeading;
+      let heading = 360 - rawHeading + 5;
       deviceHeading = (heading + 360) % 360;
     } else if (event.alpha !== null) {
       // 🤖 ANDROID / CHROME: Perfekt kalibriert (Dein getesteter Wunschwert!)
-      let heading = event.alpha - 145;
+      let heading = event.alpha - 140;
       deviceHeading = (heading + 360) % 360;
     }
   }
