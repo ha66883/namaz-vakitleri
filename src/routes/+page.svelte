@@ -2,6 +2,10 @@
   import { onMount } from "svelte";
   import logo from "$lib/assets/logo-goldd.png";
   import { hadiths } from "$lib/data/hadiths";
+
+  let debugAlpha = $state(0);
+  let debugAbsolute = $state(false);
+
   type PrayerTimes = {
     Imsak: string;
     Sunrise: string;
@@ -208,6 +212,8 @@
       currentHeading = event.alpha;
     }
 
+    debugAlpha = currentHeading;
+    debugAbsolute = !!event.absolute;
     // State aktualisieren für die Nadel-Rotation
     deviceHeading = currentHeading;
 
@@ -1002,6 +1008,12 @@
                     >{qiblaAngle}°</span
                   > dereceye dönerek Kıbleyi bulabilirsiniz.
                 </p>
+
+                <div class="mt-4 text-xs text-white/50">
+                  <p>Heading: {debugAlpha}</p>
+                  <p>Absolute: {String(debugAbsolute)}</p>
+                  
+                </div>
 
                 <!-- Der Interaktions-Button (Startet Live-Modus auf Smartphones) -->
                 <button
