@@ -198,11 +198,14 @@
 
     if ("webkitCompassHeading" in event) {
       // 🍏 iOS / Safari
-      const rawHeading = (event as any).webkitCompassHeading;
-      currentHeading = (360 - rawHeading + 10 + 360) % 360;
+      // const rawHeading = (event as any).webkitCompassHeading;
+      // currentHeading = (360 - rawHeading + 10 + 360) % 360;
+      // currentHeading = (360 - rawHeading + 10 + 360) % 360;
+      currentHeading = (event as any).webkitCompassHeading;
     } else if (event.alpha !== null) {
       // 🤖 Android / Samsung (Deine perfekten 145 Grad!)
-      currentHeading = (event.alpha - 145 + 360) % 360;
+      // currentHeading = (event.alpha - 145 + 360) % 360;
+      currentHeading = event.alpha;
     }
 
     // State aktualisieren für die Nadel-Rotation
