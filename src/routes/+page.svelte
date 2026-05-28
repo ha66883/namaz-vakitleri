@@ -192,8 +192,8 @@
     if (qiblaAngle === null) return 0;
     if (!liveCompassActive) return qiblaAngle; // Im statischen Modus zeigt der Pfeil einfach den festen Winkel
 
-    // Im Live-Modus: Ziehe die Handy-Blickrichtung vom Qibla-Winkel ab
-    return (qiblaAngle - deviceHeading + 360) % 360;
+    const baseRotation = (qiblaAngle - deviceHeading + 360) % 360;
+    return (baseRotation + 180) % 360;
   });
 
   function handleOrientation(event: DeviceOrientationEvent) {
@@ -202,12 +202,12 @@
     // 1. 🍏 iOS / Safari Check
     if ("webkitCompassHeading" in event) {
       const rawHeading = (event as any).webkitCompassHeading;
-      currentHeading = (360 - rawHeading + 190 + 360) % 360;
+      currentHeading = (360 - rawHeading + 10 + 360) % 360;
     }
     // 2. 🤖 Android / Chrome Check (Mit expliziter Typprüfung auf null!)
     else if (event.alpha !== null) {
       // TypeScript weiß jetzt zu 100%, dass event.alpha eine Zahl ist. Das Rot verschwindet!
-      currentHeading = (event.alpha - 195 + 360) % 360;
+      currentHeading = (event.alpha - 15 + 360) % 360;
     } else {
       // Sensor liefert keine brauchbaren Daten
       return;
