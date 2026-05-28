@@ -196,40 +196,37 @@
     return (qiblaAngle - deviceHeading + 360) % 360;
   });
 
-  // Der Erfolgstrigger wird JETZT direkt im Datenstrom des Sensors berechnet
   function handleOrientation(event: DeviceOrientationEvent) {
     let currentHeading = 0;
 
+    // 1. 🍏 iOS / Safari Check
     if ("webkitCompassHeading" in event) {
-      // 🍏 iOS / Safari
-      // const rawHeading = (event as any).webkitCompassHeading;
-      // currentHeading = (360 - rawHeading + 10 + 360) % 360;
-      // currentHeading = (360 - rawHeading + 10 + 360) % 360;
-      currentHeading = (event as any).webkitCompassHeading;
-    } else if (event.alpha !== null) {
-      // 🤖 Android / Samsung (Deine perfekten 145 Grad!)
-      // currentHeading = (event.alpha - 145 + 360) % 360;
-      currentHeading = event.alpha;
+      const rawHeading = (event as any).webkitCompassHeading;
+      currentHeading = (360 - rawHeading + 10 + 360) % 360;
+    }
+    // 2. 🤖 Android / Chrome Check (Mit expliziter Typprüfung auf null!)
+    else if (event.alpha !== null) {
+      // TypeScript weiß jetzt zu 100%, dass event.alpha eine Zahl ist. Das Rot verschwindet!
+      currentHeading = (event.alpha - 15 + 360) % 360;
+    } else {
+      // Sensor liefert keine brauchbaren Daten
+      return;
     }
 
-    debugAlpha = currentHeading;
-    debugAbsolute = !!event.absolute;
-    // State aktualisieren für die Nadel-Rotation
     deviceHeading = currentHeading;
 
-    // PRÜFUNG: Wenn die berechnete Nadelrotation nahe bei 0° (oben) steht,
-    // schlagen wir an. Das nutzt exakt das, was der Nutzer auf dem Bildschirm sieht!
     if (qiblaAngle !== null) {
       const currentRotation = (qiblaAngle - currentHeading + 360) % 360;
-      isAligned = currentRotation <= 4 || currentRotation >= 356; // 4 Grad Toleranz
+      isAligned = currentRotation <= 4 || currentRotation >= 356;
     }
   }
-
   // Aktivieren
   async function startLiveCompass() {
+    // Sichere Prüfung für Server-Side-Rendering (SSR)
     if (typeof window === "undefined") return;
-    isAligned = false; // Beim Starten GARANTIERT auf false setzen (Löscht den Start-Bug!)
+    isAligned = false;
 
+    // 1. 🍏 iOS / Safari Spezifisch
     if (
       typeof DeviceOrientationEvent !== "undefined" &&
       typeof (DeviceOrientationEvent as any).requestPermission === "function"
@@ -248,7 +245,17 @@
         console.error(e);
       }
     } else {
-      if ("ondeviceorientation" in window || "deviceorientation" in window) {
+      // 2. 🤖 Android / Chrome: Wir nutzen 'globalThis', um dem 'never'-Typ-Fehler zu entkommen
+      const currentWindow = window as any;
+
+      if ("ondeviceorientationabsolute" in currentWindow) {
+        window.addEventListener(
+          "deviceorientationabsolute",
+          handleOrientation,
+          true,
+        );
+        liveCompassActive = true;
+      } else if ("ondeviceorientation" in currentWindow) {
         window.addEventListener("deviceorientation", handleOrientation, true);
         liveCompassActive = true;
       } else {
@@ -256,13 +263,20 @@
       }
     }
   }
+
   // Deaktivieren
   function stopLiveCompass() {
     if (typeof window !== "undefined") {
+      // Auch hier nutzen wir das globale window-Objekt sicher ohne Typenkonflikt
       window.removeEventListener("deviceorientation", handleOrientation, true);
+      window.removeEventListener(
+        "deviceorientationabsolute",
+        handleOrientation,
+        true,
+      );
     }
     liveCompassActive = false;
-    isAligned = false; // Beim Schließen hart zurücksetzen
+    isAligned = false;
     deviceHeading = 0;
   }
 
@@ -1012,7 +1026,6 @@
                 <div class="mt-4 text-xs text-white/50">
                   <p>Heading: {debugAlpha}</p>
                   <p>Absolute: {String(debugAbsolute)}</p>
-                  
                 </div>
 
                 <!-- Der Interaktions-Button (Startet Live-Modus auf Smartphones) -->
