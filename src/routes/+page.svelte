@@ -207,7 +207,7 @@
     // 2. 🤖 Android / Chrome Check (Mit expliziter Typprüfung auf null!)
     else if (event.alpha !== null) {
       // TypeScript weiß jetzt zu 100%, dass event.alpha eine Zahl ist. Das Rot verschwindet!
-      currentHeading = (event.alpha - 85 + 360) % 360;
+      currentHeading = (event.alpha - 90 + 360) % 360;
     } else {
       // Sensor liefert keine brauchbaren Daten
       return;
