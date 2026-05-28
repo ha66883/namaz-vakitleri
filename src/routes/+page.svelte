@@ -195,11 +195,12 @@
     // Wenn der Live-Modus aus ist, darf es NIEMALS grün leuchten
     if (!liveCompassActive) return false;
 
-    // Wenn der Sensor noch lädt oder genau 0 liefert (Startphase), blockieren wir das Match
-    if (deviceHeading === 0) return false;
+    // Wir berechnen die Differenz zwischen dem echten Kurs des Handys
+    // und dem berechneten Zielwinkel direkt!
+    const diff = Math.abs(deviceHeading - (qiblaAngle || 0));
 
-    // Toleranzbereich: Nur wenn die Nadel wirklich oben bei 0° (+-3 Grad) steht
-    return visualNeedleRotation <= 3 || visualNeedleRotation >= 357;
+    // Da es ein Kreis ist, prüfen wir beide Richtungen (nahe 0° oder nahe 360°)
+    return diff <= 3 || diff >= 357;
   });
 
   function handleOrientation(event: DeviceOrientationEvent) {
