@@ -202,7 +202,7 @@
     // 1. 🍏 iOS / Safari Check
     if ("webkitCompassHeading" in event) {
       const rawHeading = (event as any).webkitCompassHeading;
-      currentHeading = (360 - rawHeading + 222 + 360) % 360;
+      currentHeading = (360 - rawHeading + 230 + 360) % 360;
     }
     // 2. 🤖 Android / Chrome Check (Mit expliziter Typprüfung auf null!)
     else if (event.alpha !== null) {
