@@ -49,6 +49,7 @@
 
   let liveCompassActive = $state(false);
   let deviceHeading = $state(0); // Wohin das Handy gerade schaut (0 = Nord)
+  let isAligned = $state(false);
   let compassPermissionDenied = $state(false);
 
   let nowTime = $state(new Date());
@@ -188,39 +189,38 @@
     if (!liveCompassActive) return qiblaAngle; // Im statischen Modus zeigt der Pfeil einfach den festen Winkel
 
     // Im Live-Modus: Ziehe die Handy-Blickrichtung vom Qibla-Winkel ab
-    return (deviceHeading + qiblaAngle + 360) % 360;
+    return (qiblaAngle - deviceHeading + 360) % 360;
   });
 
-  let isAligned = $derived.by(() => {
-    // Wenn der Live-Modus aus ist, darf es NIEMALS grün leuchten
-    if (!liveCompassActive) return false;
-
-    // Wir berechnen die Differenz zwischen dem echten Kurs des Handys
-    // und dem berechneten Zielwinkel direkt!
-    const diff = Math.abs(deviceHeading - (qiblaAngle || 0));
-
-    // Da es ein Kreis ist, prüfen wir beide Richtungen (nahe 0° oder nahe 360°)
-    return diff <= 3 || diff >= 357;
-  });
-
+  // Der Erfolgstrigger wird JETZT direkt im Datenstrom des Sensors berechnet
   function handleOrientation(event: DeviceOrientationEvent) {
+    let currentHeading = 0;
+
     if ("webkitCompassHeading" in event) {
-      // 🍏 iPHONE / SAFARI: Perfekt kalibriert
-      // Verhindert das Mitdrehen (Invertierung) und gleicht den Versatz aus
+      // 🍏 iOS / Safari
       const rawHeading = (event as any).webkitCompassHeading;
-      let heading = 360 - rawHeading + 4;
-      deviceHeading = (heading + 360) % 360;
+      currentHeading = (360 - rawHeading + 10 + 360) % 360;
     } else if (event.alpha !== null) {
-      // 🤖 ANDROID / CHROME: Perfekt kalibriert (Dein getesteter Wunschwert!)
-      let heading = event.alpha - 140;
-      deviceHeading = (heading + 360) % 360;
+      // 🤖 Android / Samsung (Deine perfekten 145 Grad!)
+      currentHeading = (event.alpha - 145 + 360) % 360;
+    }
+
+    // State aktualisieren für die Nadel-Rotation
+    deviceHeading = currentHeading;
+
+    // PRÜFUNG: Wenn die berechnete Nadelrotation nahe bei 0° (oben) steht,
+    // schlagen wir an. Das nutzt exakt das, was der Nutzer auf dem Bildschirm sieht!
+    if (qiblaAngle !== null) {
+      const currentRotation = (qiblaAngle - currentHeading + 360) % 360;
+      isAligned = currentRotation <= 4 || currentRotation >= 356; // 4 Grad Toleranz
     }
   }
-  // Aktiviert den echten Live-Kompass mit Berechtigungs-Abfrage
+
+  // Aktivieren
   async function startLiveCompass() {
     if (typeof window === "undefined") return;
+    isAligned = false; // Beim Starten GARANTIERT auf false setzen (Löscht den Start-Bug!)
 
-    // 1. iOS Spezifische Abfrage (ab iOS 13+)
     if (
       typeof DeviceOrientationEvent !== "undefined" &&
       typeof (DeviceOrientationEvent as any).requestPermission === "function"
@@ -236,32 +236,25 @@
           compassPermissionDenied = true;
         }
       } catch (e) {
-        console.error("iOS Sensorenabfrage fehlgeschlagen:", e);
+        console.error(e);
       }
     } else {
-      // 2. Android & Desktop (Fragt keine extra Permission ab)
       if ("ondeviceorientation" in window || "deviceorientation" in window) {
         window.addEventListener("deviceorientation", handleOrientation, true);
         liveCompassActive = true;
-
-        // Kurzer Check, ob der Sensor überhaupt Werte liefert (Desktop-Fallback)
-        setTimeout(() => {
-          if (deviceHeading === 0 && liveCompassActive) {
-            // Wenn nach 1 Sekunde exakt 0 steht, hat das Gerät vermutlich keinen Sensor
-            console.log("Sensor liefert keine Daten. Vermutlich Desktop.");
-          }
-        }, 1000);
       } else {
         compassPermissionDenied = true;
       }
     }
   }
-
+  // Deaktivieren
   function stopLiveCompass() {
     if (typeof window !== "undefined") {
       window.removeEventListener("deviceorientation", handleOrientation, true);
     }
     liveCompassActive = false;
+    isAligned = false; // Beim Schließen hart zurücksetzen
+    deviceHeading = 0;
   }
 
   async function installApp() {
