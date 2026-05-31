@@ -56,9 +56,11 @@
   let isAligned = $state(false);
   let compassPermissionDenied = $state(false);
 
-  let compassQuality = $state<"good" | "medium" | "poor">("good");
-  let headingSamples = $state<number[]>([]);
   let hasCompassData = $state(false);
+  let calibrationRecommended = $state(false);
+  let unstableCounter = 0;
+  let lastHeading = 0;
+  let compassInitializing = $state(false);
 
   let nowTime = $state(new Date());
 
@@ -218,24 +220,21 @@
     }
 
     hasCompassData = true;
+    compassInitializing = false;
     deviceHeading = currentHeading;
+    const difference = Math.abs(currentHeading - lastHeading);
 
-    headingSamples = [...headingSamples.slice(-19), currentHeading];
-
-    if (headingSamples.length >= 10) {
-      const max = Math.max(...headingSamples);
-      const min = Math.min(...headingSamples);
-
-      const spread = max - min;
-
-      if (spread <= 5) {
-        compassQuality = "good";
-      } else if (spread <= 15) {
-        compassQuality = "medium";
-      } else {
-        compassQuality = "poor";
-      }
+    if (difference > 15) {
+      unstableCounter++;
+    } else {
+      unstableCounter = Math.max(0, unstableCounter - 1);
     }
+
+    if (unstableCounter > 20) {
+      calibrationRecommended = true;
+    }
+
+    lastHeading = currentHeading;
 
     if (qiblaAngle !== null) {
       const currentRotation = (qiblaAngle - currentHeading + 360) % 360;
@@ -245,6 +244,10 @@
 
   // Aktivieren
   async function startLiveCompass() {
+    compassInitializing = true;
+    calibrationRecommended = false;
+    unstableCounter = 0;
+    lastHeading = 0;
     hasCompassData = false;
     compassPermissionDenied = false;
 
@@ -295,6 +298,9 @@
 
   // Deaktivieren
   function stopLiveCompass() {
+    calibrationRecommended = false;
+    unstableCounter = 0;
+    lastHeading = 0;
     if (typeof window !== "undefined") {
       // Auch hier nutzen wir das globale window-Objekt sicher ohne Typenkonflikt
       window.removeEventListener("deviceorientation", handleOrientation, true);
@@ -305,23 +311,21 @@
       );
     }
 
-    headingSamples = [];
-    compassQuality = "good";
-
     liveCompassActive = false;
     isAligned = false;
     deviceHeading = 0;
   }
 
-  function startCompassTimeout() {
-    setTimeout(() => {
-      if (!hasCompassData) {
-        compassPermissionDenied = true;
-        stopLiveCompass();
-      }
-    }, 2000);
-  }
+function startCompassTimeout() {
+  setTimeout(() => {
+    if (!hasCompassData) {
+      stopLiveCompass();
 
+      compassInitializing = false;
+      compassPermissionDenied = true;
+    }
+  }, 2000);
+}
   async function installApp() {
     if (!deferredPrompt) return;
     deferredPrompt.prompt();
@@ -770,9 +774,6 @@
           </div>
         {/if}
       </div>
-      <p>liveCompassActive: {String(liveCompassActive)}</p>
-      <p>hasCompassData: {String(hasCompassData)}</p>
-      <p>compassPermissionDenied: {String(compassPermissionDenied)}</p>
       <div
         class="mb-5 rounded-[32px] border border-orange-400/10 bg-orange-400/5 p-6 shadow-2xl backdrop-blur-xl"
       >
@@ -1056,68 +1057,39 @@
                 </div>
               </div>
 
-              <!-- Kontextabhängige Anweisungen (Je nach Modus) -->
-              {#if !liveCompassActive}
-                <p
-                  class="text-xs text-orange-200/70 max-w-[260px] mx-auto leading-relaxed"
-                >
-                  Pusulanızın kuzey (N) iğnesini sıfırladıktan sonra, saat
-                  yönünde <span class="text-orange-300 font-bold font-mono"
-                    >{qiblaAngle}°</span
-                  > dereceye dönerek Kıbleyi bulabilirsiniz.
-                </p>
+              <!-- Kontextabhängige Anweisungen -->
 
-                <!-- Der Interaktions-Button (Startet Live-Modus auf Smartphones) -->
-                <button
-                  onclick={startLiveCompass}
-                  class="w-full py-2.5 px-4 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-medium text-sm rounded-xl shadow-lg shadow-orange-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              {#if compassPermissionDenied}
+                <div
+                  class="text-xs bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-red-400 text-left"
                 >
-                  🧭 Canlı Kıble Pusulası
-                </button>
-              {:else}
-                <!-- Anzeige, wenn der Live-Modus auf dem Handy aktiv ist -->
-                {#if hasCompassData}
-                  <div
-                    class="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-300 animate-pulse border border-emerald-500/30"
-                  >
-                    <span class="h-2 w-2 rounded-full bg-emerald-400"></span>
-                    Canlı Pusula Modu Aktif
-                  </div>
-                {/if}
-                {#if !hasCompassData}
-                  <div
-                    class="inline-flex items-center gap-2 rounded-full bg-red-500/20 px-3 py-1 text-xs text-red-300 border border-red-500/30"
-                  >
-                    🔴 Pusula Desteklenmiyor
-                  </div>
-                {:else if compassQuality === "good"}
-                  <div
-                    class="inline-flex items-center gap-2 rounded-full bg-emerald-500/20 px-3 py-1 text-xs text-emerald-300 border border-emerald-500/30"
-                  >
-                    🟢 Pusula Hazır
-                  </div>
-                {:else if compassQuality === "medium"}
-                  <div
-                    class="inline-flex items-center gap-2 rounded-full bg-yellow-500/20 px-3 py-1 text-xs text-yellow-300 border border-yellow-500/30"
-                  >
-                    🟡 Hassasiyet Orta
-                  </div>
-                {:else}
-                  <div
-                    class="inline-flex items-center gap-2 rounded-full bg-red-500/20 px-3 py-1 text-xs text-red-300 border border-red-500/30"
-                  >
-                    🔴 Kalibrasyon Önerilir
-                  </div>
-                {/if}
+                  ⚠️ <strong>Pusula Kullanılamıyor:</strong>
+                  Cihazınızda yön sensörü bulunmuyor veya tarayıcı pusula erişimine
+                  izin vermedi. Kıble yönünü yukarıdaki {qiblaAngle}° derecesine
+                  göre belirleyebilirsiniz.
+                </div>
+              {:else if compassInitializing}
+                <div
+                  class="inline-flex items-center gap-2 rounded-full bg-orange-500/20 px-4 py-2 text-sm text-orange-300 border border-orange-500/30"
+                >
+                  🧭 Sensör kontrol ediliyor...
+                </div>
+              {:else if liveCompassActive && hasCompassData}
+                <div
+                  class="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-300 animate-pulse border border-emerald-500/30"
+                >
+                  <span class="h-2 w-2 rounded-full bg-emerald-400"></span>
+                  Canlı Pusula Aktif
+                </div>
 
-                {#if compassQuality === "poor"}
+                {#if calibrationRecommended}
                   <div
                     class="rounded-xl border border-yellow-500/20 bg-yellow-500/10 p-3 text-center text-xs text-yellow-200"
                   >
                     <div class="mb-2 text-2xl font-bold">∞</div>
 
                     <div class="font-semibold mb-1">
-                      Pusula hassasiyeti düşük
+                      Pusula hassasiyeti düşük olabilir
                     </div>
 
                     <div>
@@ -1130,30 +1102,34 @@
                 <p
                   class="text-xs text-emerald-200/80 max-w-[250px] mx-auto leading-relaxed"
                 >
-                  Telefonunuzu yere paralel/düz tutun. 🕋 İkonu ve pusula <span
-                    class="text-emerald-300 font-bold">K (Kuzey)</span
-                  > harfi tam yukarı geldiğinde Kıbleye yönelmiş olursunuz.
+                  Telefonunuzu yere paralel tutun. 🕋 İkonu ve pusula
+                  <span class="text-emerald-300 font-bold">K (Kuzey)</span>
+                  harfi tam yukarı geldiğinde kıbleye yönelmiş olursunuz.
                 </p>
 
-                <!-- Button zum Beenden -->
                 <button
                   onclick={stopLiveCompass}
                   class="w-full py-2 px-4 bg-white/10 hover:bg-white/15 text-white/90 text-xs font-medium rounded-xl border border-white/10 transition-all"
                 >
                   Canlı Modu Kapat
                 </button>
-              {/if}
-
-              <!-- Fehlermeldung (Falls kein Sensor vorhanden oder blockiert) -->
-              {#if compassPermissionDenied}
-                <div
-                  class="text-xs bg-red-500/10 border border-red-500/20 rounded-xl p-2.5 text-red-400 text-left"
+              {:else}
+                <p
+                  class="text-xs text-orange-200/70 max-w-[260px] mx-auto leading-relaxed"
                 >
-                  ⚠️ <strong>Pusula Kullanılamıyor:</strong>
-                  Cihazınızda yön sensörü bulunmuyor veya tarayıcı pusula erişimine
-                  izin vermedi. Kıble yönünü yukarıdaki {qiblaAngle}° derecesine
-                  göre belirleyebilirsiniz.
-                </div>
+                  Pusulanızın kuzey (N) yönünü referans alarak saat yönünde
+                  <span class="text-orange-300 font-bold font-mono">
+                    {qiblaAngle}°
+                  </span>
+                  dereceye dönerek kıbleyi bulabilirsiniz.
+                </p>
+
+                <button
+                  onclick={startLiveCompass}
+                  class="w-full py-2.5 px-4 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-medium text-sm rounded-xl shadow-lg shadow-orange-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                >
+                  🧭 Canlı Kıble Pusulası
+                </button>
               {/if}
             </div>
           </div>
