@@ -2,6 +2,10 @@
   import { onMount } from "svelte";
   import logo from "$lib/assets/logo-goldd.png";
   import { hadiths } from "$lib/data/hadiths";
+
+  let debugAlpha = $state(0);
+  let debugAbsolute = $state(false);
+
   type PrayerTimes = {
     Imsak: string;
     Sunrise: string;
@@ -49,7 +53,14 @@
 
   let liveCompassActive = $state(false);
   let deviceHeading = $state(0); // Wohin das Handy gerade schaut (0 = Nord)
+  let isAligned = $state(false);
   let compassPermissionDenied = $state(false);
+
+  let hasCompassData = $state(false);
+  let calibrationRecommended = $state(false);
+  let unstableCounter = 0;
+  let lastHeading = 0;
+  let compassInitializing = $state(false);
 
   let nowTime = $state(new Date());
 
@@ -188,34 +199,63 @@
     if (!liveCompassActive) return qiblaAngle; // Im statischen Modus zeigt der Pfeil einfach den festen Winkel
 
     // Im Live-Modus: Ziehe die Handy-Blickrichtung vom Qibla-Winkel ab
-    return (deviceHeading + qiblaAngle + 360) % 360;
+    return (qiblaAngle - deviceHeading + 360) % 360;
   });
 
-  // Prüft reaktiv, ob der Live-Modus aktiv ist und die Nadel nach oben zeigt (+-3 Grad Toleranz)
-  let isAligned = $derived(
-    
-    liveCompassActive &&
-      (visualNeedleRotation <= 3 || visualNeedleRotation >= 357),
-  );
-
   function handleOrientation(event: DeviceOrientationEvent) {
+    let currentHeading = 0;
+
+    // 1. 🍏 iOS / Safari Check
     if ("webkitCompassHeading" in event) {
-      // 🍏 iPHONE / SAFARI: Perfekt kalibriert
-      // Verhindert das Mitdrehen (Invertierung) und gleicht den Versatz aus
       const rawHeading = (event as any).webkitCompassHeading;
-      let heading = 360 - rawHeading + 4;
-      deviceHeading = (heading + 360) % 360;
-    } else if (event.alpha !== null) {
-      // 🤖 ANDROID / CHROME: Perfekt kalibriert (Dein getesteter Wunschwert!)
-      let heading = event.alpha - 140;
-      deviceHeading = (heading + 360) % 360;
+      currentHeading = (360 - rawHeading + 265 + 360) % 360;
+    }
+    // 2. 🤖 Android / Chrome Check (Mit expliziter Typprüfung auf null!)
+    else if (event.alpha !== null) {
+      // TypeScript weiß jetzt zu 100%, dass event.alpha eine Zahl ist. Das Rot verschwindet!
+      currentHeading = (event.alpha - 100 + 360) % 360;
+    } else {
+      // Sensor liefert keine brauchbaren Daten
+      return;
+    }
+
+    hasCompassData = true;
+    compassInitializing = false;
+    deviceHeading = currentHeading;
+    const difference = Math.abs(currentHeading - lastHeading);
+
+    if (difference > 15) {
+      unstableCounter++;
+    } else {
+      unstableCounter = Math.max(0, unstableCounter - 1);
+    }
+
+    if (unstableCounter > 20) {
+      calibrationRecommended = true;
+    }
+
+    lastHeading = currentHeading;
+
+    if (qiblaAngle !== null) {
+      const currentRotation = (qiblaAngle - currentHeading + 360) % 360;
+      isAligned = currentRotation <= 4 || currentRotation >= 356;
     }
   }
-  // Aktiviert den echten Live-Kompass mit Berechtigungs-Abfrage
-  async function startLiveCompass() {
-    if (typeof window === "undefined") return;
 
-    // 1. iOS Spezifische Abfrage (ab iOS 13+)
+  // Aktivieren
+  async function startLiveCompass() {
+    compassInitializing = true;
+    calibrationRecommended = false;
+    unstableCounter = 0;
+    lastHeading = 0;
+    hasCompassData = false;
+    compassPermissionDenied = false;
+
+    // Sichere Prüfung für Server-Side-Rendering (SSR)
+    if (typeof window === "undefined") return;
+    isAligned = false;
+
+    // 1. 🍏 iOS / Safari Spezifisch
     if (
       typeof DeviceOrientationEvent !== "undefined" &&
       typeof (DeviceOrientationEvent as any).requestPermission === "function"
@@ -227,38 +267,65 @@
         if (permission === "granted") {
           window.addEventListener("deviceorientation", handleOrientation, true);
           liveCompassActive = true;
+          startCompassTimeout();
         } else {
           compassPermissionDenied = true;
         }
       } catch (e) {
-        console.error("iOS Sensorenabfrage fehlgeschlagen:", e);
+        console.error(e);
       }
     } else {
-      // 2. Android & Desktop (Fragt keine extra Permission ab)
-      if ("ondeviceorientation" in window || "deviceorientation" in window) {
+      // 2. 🤖 Android / Chrome: Wir nutzen 'globalThis', um dem 'never'-Typ-Fehler zu entkommen
+      const currentWindow = window as any;
+
+      if ("ondeviceorientationabsolute" in currentWindow) {
+        window.addEventListener(
+          "deviceorientationabsolute",
+          handleOrientation,
+          true,
+        );
+        liveCompassActive = true;
+        startCompassTimeout();
+      } else if ("ondeviceorientation" in currentWindow) {
         window.addEventListener("deviceorientation", handleOrientation, true);
         liveCompassActive = true;
-
-        // Kurzer Check, ob der Sensor überhaupt Werte liefert (Desktop-Fallback)
-        setTimeout(() => {
-          if (deviceHeading === 0 && liveCompassActive) {
-            // Wenn nach 1 Sekunde exakt 0 steht, hat das Gerät vermutlich keinen Sensor
-            console.log("Sensor liefert keine Daten. Vermutlich Desktop.");
-          }
-        }, 1000);
+        startCompassTimeout();
       } else {
         compassPermissionDenied = true;
       }
     }
   }
 
+  // Deaktivieren
   function stopLiveCompass() {
+    calibrationRecommended = false;
+    unstableCounter = 0;
+    lastHeading = 0;
     if (typeof window !== "undefined") {
+      // Auch hier nutzen wir das globale window-Objekt sicher ohne Typenkonflikt
       window.removeEventListener("deviceorientation", handleOrientation, true);
+      window.removeEventListener(
+        "deviceorientationabsolute",
+        handleOrientation,
+        true,
+      );
     }
+
     liveCompassActive = false;
+    isAligned = false;
+    deviceHeading = 0;
   }
 
+function startCompassTimeout() {
+  setTimeout(() => {
+    if (!hasCompassData) {
+      stopLiveCompass();
+
+      compassInitializing = false;
+      compassPermissionDenied = true;
+    }
+  }, 2000);
+}
   async function installApp() {
     if (!deferredPrompt) return;
     deferredPrompt.prompt();
@@ -707,7 +774,6 @@
           </div>
         {/if}
       </div>
-
       <div
         class="mb-5 rounded-[32px] border border-orange-400/10 bg-orange-400/5 p-6 shadow-2xl backdrop-blur-xl"
       >
@@ -885,7 +951,190 @@
         {/if}
       </div>
 
-    
+      <div
+        class="mb-5 rounded-[32px] border border-orange-400/10 bg-orange-400/5 p-6 shadow-2xl backdrop-blur-xl"
+      >
+        <!-- Header-Bereich -->
+        <div class="flex items-center justify-between mb-5">
+          <h2 class="text-xl font-semibold text-orange-100">Kıble Yönü</h2>
+          {#if qiblaAngle !== null}
+            <span
+              class="text-xs bg-orange-500/20 text-orange-300 font-mono px-2.5 py-1 rounded-md border border-orange-500/20"
+            >
+              Pusula Derecesi: {qiblaAngle}°
+            </span>
+          {/if}
+        </div>
+
+        {#if loading}
+          <!-- Lade-Zustand (Skelett) -->
+          <div class="flex flex-col items-center py-6 space-y-4">
+            <div class="h-24 w-24 animate-pulse rounded-full bg-white/10"></div>
+          </div>
+        {:else}
+          <div class="flex flex-col items-center justify-center space-y-6">
+            <!-- 1. Der visuelle Kompass-Kreis -->
+            <div
+              class="relative w-36 h-36 rounded-full border-2 border-dashed flex items-center justify-center bg-white/5 shadow-inner transition-all duration-300
+        {isAligned
+                ? 'border-emerald-400 bg-emerald-500/10 shadow-[0_0_20px_rgba(52,211,153,0.3)]'
+                : 'border-white/20'}"
+            >
+              <!-- Himmelsrichtungen zur Orientierung -->
+              <span
+                class="absolute top-1 text-[10px] font-bold font-mono transition-colors {isAligned
+                  ? 'text-emerald-300'
+                  : 'text-white/40'}">K</span
+              >
+              <span
+                class="absolute bottom-1 text-[10px] font-bold font-mono text-white/20"
+                >G</span
+              >
+              <span
+                class="absolute right-1 text-[10px] font-bold font-mono text-white/20"
+                >D</span
+              >
+              <span
+                class="absolute left-1 text-[10px] font-bold font-mono text-white/20"
+                >B</span
+              >
+
+              <!-- Die rotierende Kompassnadel -->
+              <div
+                class="w-full h-full flex items-center justify-center transition-transform duration-200 ease-out"
+                style="transform: rotate({visualNeedleRotation}deg);"
+              >
+                <div
+                  class="relative w-2 h-28 flex flex-col justify-between items-center"
+                >
+                  <!-- Pfeilspitze (Wechselt bei Erfolg zu Grün) -->
+                  <div
+                    class="w-0 h-0 border-l-[8px] border-r-[8px] border-b-[24px] border-l-transparent border-r-transparent transition-colors duration-300
+              {isAligned
+                      ? 'border-b-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.6)]'
+                      : 'border-b-orange-400 drop-shadow-[0_0_8px_rgba(251,146,60,0.6)]'}"
+                  ></div>
+
+                  <!-- Kaaba-Icon steht fest auf der Spitze -->
+                  <span class="absolute -top-6 text-sm">🕋</span>
+
+                  <!-- Unteres Ende der Nadel -->
+                  <div
+                    class="w-0 h-0 border-l-[6px] border-r-[6px] border-t-[18px] border-l-transparent border-r-transparent border-t-white/30"
+                  ></div>
+                </div>
+              </div>
+
+              <!-- Zentraler Achsen-Pin -->
+              <div
+                class="absolute w-3 h-3 bg-white rounded-full border shadow-md transition-colors {isAligned
+                  ? 'border-emerald-500'
+                  : 'border-orange-500'}"
+              ></div>
+            </div>
+
+            <!-- 2. Dynamischer Informationsbereich für ALLE Endgeräte -->
+            <div class="w-full text-center space-y-4">
+              <!-- Statische Info-Karten für PC-Nutzer & Schnelles Ablesen -->
+              <div class="grid grid-cols-2 gap-2 text-left">
+                <div class="bg-white/5 rounded-xl p-3 border border-white/5">
+                  <span
+                    class="text-[10px] uppercase text-orange-200/50 block tracking-wider"
+                    >Kıble Açısı</span
+                  >
+                  <span class="text-sm font-bold text-white font-mono"
+                    >{qiblaAngle}°</span
+                  >
+                </div>
+                <div class="bg-white/5 rounded-xl p-3 border border-white/5">
+                  <span
+                    class="text-[10px] uppercase text-orange-200/50 block tracking-wider"
+                    >Yön Tarifi</span
+                  >
+                  <span class="text-xs font-semibold text-orange-100"
+                    >Kuzeyden Doğuya</span
+                  >
+                </div>
+              </div>
+
+              <!-- Kontextabhängige Anweisungen -->
+
+              {#if compassPermissionDenied}
+                <div
+                  class="text-xs bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-red-400 text-left"
+                >
+                  ⚠️ <strong>Pusula Kullanılamıyor:</strong>
+                  Cihazınızda yön sensörü bulunmuyor veya tarayıcı pusula erişimine
+                  izin vermedi. Kıble yönünü yukarıdaki {qiblaAngle}° derecesine
+                  göre belirleyebilirsiniz.
+                </div>
+              {:else if compassInitializing}
+                <div
+                  class="inline-flex items-center gap-2 rounded-full bg-orange-500/20 px-4 py-2 text-sm text-orange-300 border border-orange-500/30"
+                >
+                  🧭 Sensör kontrol ediliyor...
+                </div>
+              {:else if liveCompassActive && hasCompassData}
+                <div
+                  class="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-300 animate-pulse border border-emerald-500/30"
+                >
+                  <span class="h-2 w-2 rounded-full bg-emerald-400"></span>
+                  Canlı Pusula Aktif
+                </div>
+
+                {#if calibrationRecommended}
+                  <div
+                    class="rounded-xl border border-yellow-500/20 bg-yellow-500/10 p-3 text-center text-xs text-yellow-200"
+                  >
+                    <div class="mb-2 text-2xl font-bold">∞</div>
+
+                    <div class="font-semibold mb-1">
+                      Pusula hassasiyeti düşük olabilir
+                    </div>
+
+                    <div>
+                      Daha doğru sonuçlar için telefonunuzu havada birkaç kez 8
+                      şeklinde hareket ettirin.
+                    </div>
+                  </div>
+                {/if}
+
+                <p
+                  class="text-xs text-emerald-200/80 max-w-[250px] mx-auto leading-relaxed"
+                >
+                  Telefonunuzu yere paralel tutun. 🕋 İkonu ve pusula
+                  <span class="text-emerald-300 font-bold">K (Kuzey)</span>
+                  harfi tam yukarı geldiğinde kıbleye yönelmiş olursunuz.
+                </p>
+
+                <button
+                  onclick={stopLiveCompass}
+                  class="w-full py-2 px-4 bg-white/10 hover:bg-white/15 text-white/90 text-xs font-medium rounded-xl border border-white/10 transition-all"
+                >
+                  Canlı Modu Kapat
+                </button>
+              {:else}
+                <p
+                  class="text-xs text-orange-200/70 max-w-[260px] mx-auto leading-relaxed"
+                >
+                  Pusulanızın kuzey (N) yönünü referans alarak saat yönünde
+                  <span class="text-orange-300 font-bold font-mono">
+                    {qiblaAngle}°
+                  </span>
+                  dereceye dönerek kıbleyi bulabilirsiniz.
+                </p>
+
+                <button
+                  onclick={startLiveCompass}
+                  class="w-full py-2.5 px-4 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-medium text-sm rounded-xl shadow-lg shadow-orange-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                >
+                  🧭 Canlı Kıble Pusulası
+                </button>
+              {/if}
+            </div>
+          </div>
+        {/if}
+      </div>
 
       <div
         class="rounded-[32px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-xl"
