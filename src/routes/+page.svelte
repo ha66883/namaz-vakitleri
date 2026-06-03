@@ -64,6 +64,9 @@
 
   let nowTime = $state(new Date());
 
+  let qiblaAvailable = $derived(latitude !== null && longitude !== null);
+  let locationPermission = $state<"granted" | "prompt" | "denied" | null>(null);
+
   const ISLAMIC_MONTHS = [
     "Muharrem", // 1
     "Safer", // 2
@@ -316,16 +319,38 @@
     deviceHeading = 0;
   }
 
-function startCompassTimeout() {
-  setTimeout(() => {
-    if (!hasCompassData) {
-      stopLiveCompass();
+  function startCompassTimeout() {
+    setTimeout(() => {
+      if (!hasCompassData) {
+        stopLiveCompass();
 
-      compassInitializing = false;
-      compassPermissionDenied = true;
+        compassInitializing = false;
+        compassPermissionDenied = true;
+      }
+    }, 2000);
+  }
+
+  async function checkLocationPermission() {
+    if (!("permissions" in navigator)) return;
+
+    try {
+      const permission = await navigator.permissions.query({
+        name: "geolocation",
+      });
+
+      locationPermission = permission.state as "granted" | "prompt" | "denied";
+
+      permission.onchange = () => {
+        locationPermission = permission.state as
+          | "granted"
+          | "prompt"
+          | "denied";
+      };
+    } catch (error) {
+      console.error(error);
     }
-  }, 2000);
-}
+  }
+
   async function installApp() {
     if (!deferredPrompt) return;
     deferredPrompt.prompt();
@@ -563,6 +588,7 @@ function startCompassTimeout() {
       e.preventDefault();
       deferredPrompt = e;
     });
+    await checkLocationPermission();
     const cachedLocationId = localStorage.getItem("location-id");
 
     const cachedCity = localStorage.getItem("city");
@@ -693,10 +719,13 @@ function startCompassTimeout() {
 
         loading = false;
       },
-      () => {
+      (error) => {
         loading = false;
 
         currentCity = "";
+        if (error.code === error.PERMISSION_DENIED) {
+          locationPermission = "denied";
+        }
       },
     );
   }
@@ -1042,9 +1071,48 @@ function startCompassTimeout() {
                     class="text-[10px] uppercase text-orange-200/50 block tracking-wider"
                     >Kıble Açısı</span
                   >
-                  <span class="text-sm font-bold text-white font-mono"
+                  <!-- <span class="text-sm font-bold text-white font-mono"
                     >{qiblaAngle}°</span
-                  >
+                  > -->
+
+                  {#if qiblaAvailable && qiblaAngle !== null}
+                    <span class="text-sm font-bold text-white font-mono">
+                      {qiblaAngle}°
+                    </span>
+                  {:else if locationPermission === "denied"}
+                    <div
+                      class="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-300"
+                    >
+                      📍 Konum izni engellenmiş.
+
+                      <div class="mt-2 text-red-200">
+                        Tarayıcı ayarlarından konum iznini etkinleştirin.
+                      </div>
+                      <div class="mt-2 text-[11px] text-red-200">
+                        Chrome → Site Ayarları → Konum → İzin Ver
+                      </div>
+                    </div>
+                  {:else if locationPermission === "prompt"}
+                    <div
+                      class="rounded-xl border border-yellow-500/20 bg-yellow-500/10 p-3 text-xs text-yellow-200"
+                    >
+                      📍 Kıble yönünü gösterebilmek için konum erişimi
+                      gereklidir.
+
+                      <button
+                        onclick={refreshLocation}
+                        class="mt-3 w-full rounded-lg bg-yellow-500/20 px-3 py-2 text-yellow-100"
+                      >
+                        Konum İznini İste
+                      </button>
+                    </div>
+                  {:else}
+                    <div
+                      class="rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-white/70"
+                    >
+                      📍 Konum bilgisi bekleniyor...
+                    </div>
+                  {/if}
                 </div>
                 <div class="bg-white/5 rounded-xl p-3 border border-white/5">
                   <span
@@ -1124,12 +1192,28 @@ function startCompassTimeout() {
                   dereceye dönerek kıbleyi bulabilirsiniz.
                 </p>
 
-                <button
+                <!-- <button
                   onclick={startLiveCompass}
                   class="w-full py-2.5 px-4 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-medium text-sm rounded-xl shadow-lg shadow-orange-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                 >
                   🧭 Canlı Kıble Pusulası
-                </button>
+                </button> -->
+
+                {#if qiblaAvailable}
+                  <button
+                    onclick={startLiveCompass}
+                    class="w-full py-2.5 px-4 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-medium text-sm rounded-xl shadow-lg shadow-orange-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                  >
+                    🧭 Canlı Kıble Pusulası
+                  </button>
+                {:else}
+                  <button
+                    disabled
+                    class="w-full py-2.5 px-4 bg-white/10 text-white/50 rounded-xl cursor-not-allowed"
+                  >
+                    📍 Önce Konum İzni Verin
+                  </button>
+                {/if}
               {/if}
             </div>
           </div>
