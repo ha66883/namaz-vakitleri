@@ -64,6 +64,7 @@
   let absoluteHeading = $state<number | null>(null);
   let debugQuaternion = $state("");
   let debugAxes = $state("");
+  let absoluteCompassSensor: any = null;
 
   let hasCompassData = $state(false);
   let calibrationRecommended = $state(false);
@@ -214,54 +215,54 @@
     return (qiblaAngle - deviceHeading + 360) % 360;
   });
 
-  function handleOrientation(event: DeviceOrientationEvent) {
-    debugAlpha = event.alpha;
-    debugBeta = event.beta;
-    debugGamma = event.gamma;
-    debugAbsolute = event.absolute;
-    debugWebkitHeading =
-      typeof (event as any).webkitCompassHeading === "number"
-        ? (event as any).webkitCompassHeading
-        : null;
-    let currentHeading = 0;
+  // function handleOrientation(event: DeviceOrientationEvent) {
+  //   debugAlpha = event.alpha;
+  //   debugBeta = event.beta;
+  //   debugGamma = event.gamma;
+  //   debugAbsolute = event.absolute;
+  //   debugWebkitHeading =
+  //     typeof (event as any).webkitCompassHeading === "number"
+  //       ? (event as any).webkitCompassHeading
+  //       : null;
+  //   let currentHeading = 0;
 
-    if ("webkitCompassHeading" in event) {
-      const rawHeading = (event as any).webkitCompassHeading;
+  //   if ("webkitCompassHeading" in event) {
+  //     const rawHeading = (event as any).webkitCompassHeading;
 
-      if (typeof rawHeading !== "number") return;
+  //     if (typeof rawHeading !== "number") return;
 
-      currentHeading = rawHeading;
-    } else if (event.alpha !== null) {
-      currentHeading = (360 - event.alpha + 360) % 360;
-    } else {
-      return;
-    }
+  //     currentHeading = rawHeading;
+  //   } else if (event.alpha !== null) {
+  //     currentHeading = (360 - event.alpha + 360) % 360;
+  //   } else {
+  //     return;
+  //   }
 
-    hasCompassData = true;
-    compassInitializing = false;
-    deviceHeading = currentHeading;
+  //   hasCompassData = true;
+  //   compassInitializing = false;
+  //   deviceHeading = currentHeading;
 
-    const difference = Math.abs(currentHeading - lastHeading);
+  //   const difference = Math.abs(currentHeading - lastHeading);
 
-    if (difference > 15) {
-      unstableCounter++;
-    } else {
-      unstableCounter = Math.max(0, unstableCounter - 1);
-    }
+  //   if (difference > 15) {
+  //     unstableCounter++;
+  //   } else {
+  //     unstableCounter = Math.max(0, unstableCounter - 1);
+  //   }
 
-    if (unstableCounter > 20) {
-      calibrationRecommended = true;
-    }
+  //   if (unstableCounter > 20) {
+  //     calibrationRecommended = true;
+  //   }
 
-    lastHeading = currentHeading;
+  //   lastHeading = currentHeading;
 
-    if (qiblaAngle !== null) {
-      const difference = Math.abs(currentHeading - qiblaAngle);
-      const normalizedDifference = Math.min(difference, 360 - difference);
+  //   if (qiblaAngle !== null) {
+  //     const difference = Math.abs(currentHeading - qiblaAngle);
+  //     const normalizedDifference = Math.min(difference, 360 - difference);
 
-      isAligned = normalizedDifference <= 8;
-    }
-  }
+  //     isAligned = normalizedDifference <= 8;
+  //   }
+  // }
 
   async function testAbsoluteOrientationSensor() {
     absoluteSensorSupported = false;
@@ -328,7 +329,6 @@
           `Y: ${axisY.x.toFixed(2)}, ${axisY.y.toFixed(2)}, ${axisY.z.toFixed(2)} | ` +
           `Z: ${axisZ.x.toFixed(2)}, ${axisZ.y.toFixed(2)}, ${axisZ.z.toFixed(2)}`;
 
-       
         // HIER EINFÜGEN
         const heading = Math.atan2(axisY.x, axisY.y);
 
@@ -351,6 +351,72 @@
     }
   }
   // Aktivieren
+  // async function startLiveCompass() {
+  //   compassInitializing = true;
+  //   calibrationRecommended = false;
+  //   unstableCounter = 0;
+  //   lastHeading = 0;
+  //   hasCompassData = false;
+  //   compassPermissionDenied = false;
+
+  //   // Sichere Prüfung für Server-Side-Rendering (SSR)
+  //   if (typeof window === "undefined") return;
+  //   isAligned = false;
+
+  //   // 1. 🍏 iOS / Safari Spezifisch
+  //   if (
+  //     typeof DeviceOrientationEvent !== "undefined" &&
+  //     typeof (DeviceOrientationEvent as any).requestPermission === "function"
+  //   ) {
+  //     try {
+  //       const permission = await (
+  //         DeviceOrientationEvent as any
+  //       ).requestPermission();
+  //       if (permission === "granted") {
+  //         window.addEventListener("deviceorientation", handleOrientation, true);
+  //         liveCompassActive = true;
+  //         startCompassTimeout();
+  //       } else {
+  //         compassPermissionDenied = true;
+  //       }
+  //     } catch (e) {
+  //       console.error(e);
+  //     }
+  //   } else {
+  //     // 2. 🤖 Android / Chrome: Wir nutzen 'globalThis', um dem 'never'-Typ-Fehler zu entkommen
+  //     const currentWindow = window as any;
+
+  //     // if ("ondeviceorientationabsolute" in currentWindow) {
+  //     //   window.addEventListener(
+  //     //     "deviceorientationabsolute",
+  //     //     handleOrientation,
+  //     //     true,
+  //     //   );
+  //     //   liveCompassActive = true;
+  //     //   startCompassTimeout();
+  //     // }
+  //     if ("ondeviceorientationabsolute" in currentWindow) {
+  //       window.addEventListener(
+  //         "deviceorientationabsolute",
+  //         (event: DeviceOrientationEvent) => {
+  //           debugAbsolute = true;
+  //           handleOrientation(event);
+  //         },
+  //         true,
+  //       );
+
+  //       liveCompassActive = true;
+  //       startCompassTimeout();
+  //     } else if ("ondeviceorientation" in currentWindow) {
+  //       window.addEventListener("deviceorientation", handleOrientation, true);
+  //       liveCompassActive = true;
+  //       startCompassTimeout();
+  //     } else {
+  //       compassPermissionDenied = true;
+  //     }
+  //   }
+  // }
+
   async function startLiveCompass() {
     compassInitializing = true;
     calibrationRecommended = false;
@@ -359,78 +425,139 @@
     hasCompassData = false;
     compassPermissionDenied = false;
 
-    // Sichere Prüfung für Server-Side-Rendering (SSR)
     if (typeof window === "undefined") return;
+
     isAligned = false;
 
-    // 1. 🍏 iOS / Safari Spezifisch
-    if (
-      typeof DeviceOrientationEvent !== "undefined" &&
-      typeof (DeviceOrientationEvent as any).requestPermission === "function"
-    ) {
-      try {
-        const permission = await (
-          DeviceOrientationEvent as any
-        ).requestPermission();
-        if (permission === "granted") {
-          window.addEventListener("deviceorientation", handleOrientation, true);
-          liveCompassActive = true;
-          startCompassTimeout();
-        } else {
-          compassPermissionDenied = true;
-        }
-      } catch (e) {
-        console.error(e);
-      }
-    } else {
-      // 2. 🤖 Android / Chrome: Wir nutzen 'globalThis', um dem 'never'-Typ-Fehler zu entkommen
-      const currentWindow = window as any;
+    try {
+      const Sensor = (window as any).AbsoluteOrientationSensor;
 
-      // if ("ondeviceorientationabsolute" in currentWindow) {
-      //   window.addEventListener(
-      //     "deviceorientationabsolute",
-      //     handleOrientation,
-      //     true,
-      //   );
-      //   liveCompassActive = true;
-      //   startCompassTimeout();
-      // }
-      if ("ondeviceorientationabsolute" in currentWindow) {
-        window.addEventListener(
-          "deviceorientationabsolute",
-          (event: DeviceOrientationEvent) => {
-            debugAbsolute = true;
-            handleOrientation(event);
-          },
-          true,
-        );
-
-        liveCompassActive = true;
-        startCompassTimeout();
-      } else if ("ondeviceorientation" in currentWindow) {
-        window.addEventListener("deviceorientation", handleOrientation, true);
-        liveCompassActive = true;
-        startCompassTimeout();
-      } else {
+      if (!Sensor) {
         compassPermissionDenied = true;
+        compassInitializing = false;
+        return;
       }
+
+      const sensor = new Sensor({
+        frequency: 10,
+        referenceFrame: "device",
+      });
+      absoluteCompassSensor = sensor;
+
+      sensor.addEventListener("reading", () => {
+        const quaternion = sensor.quaternion;
+
+        if (!quaternion || quaternion.length < 4) return;
+
+        const [x, y, z, w] = quaternion;
+
+        // Quaternion → Geräte-Y-Achse
+        const vx = 0;
+        const vy = 1;
+        const vz = 0;
+
+        const ix = w * vx + y * vz - z * vy;
+        const iy = w * vy + z * vx - x * vz;
+        const iz = w * vz + x * vy - y * vx;
+        const iw = -x * vx - y * vy - z * vz;
+
+        const axisY = {
+          x: ix * w + iw * -x + iy * -z - iz * -y,
+          y: iy * w + iw * -y + iz * -x - ix * -z,
+          z: iz * w + iw * -z + ix * -y - iy * -x,
+        };
+
+        // Geräte-Y-Achse → Kompassrichtung
+        const heading = Math.atan2(axisY.x, axisY.y);
+
+        let currentHeading = (heading * 180) / Math.PI;
+        currentHeading = (currentHeading + 360) % 360;
+
+        hasCompassData = true;
+        compassInitializing = false;
+
+        deviceHeading = currentHeading;
+
+        const difference = Math.abs(currentHeading - lastHeading);
+        const normalizedDifference = Math.min(difference, 360 - difference);
+
+        if (normalizedDifference > 15) {
+          unstableCounter++;
+        } else {
+          unstableCounter = Math.max(0, unstableCounter - 1);
+        }
+
+        if (unstableCounter > 20) {
+          calibrationRecommended = true;
+        }
+
+        lastHeading = currentHeading;
+
+        if (qiblaAngle !== null) {
+          const qiblaDifference = Math.abs(currentHeading - qiblaAngle);
+
+          const normalizedQiblaDifference = Math.min(
+            qiblaDifference,
+            360 - qiblaDifference,
+          );
+
+          isAligned = normalizedQiblaDifference <= 8;
+        }
+      });
+
+      sensor.addEventListener("error", (event: any) => {
+        console.error("AbsoluteOrientationSensor:", event);
+
+        compassPermissionDenied = true;
+        compassInitializing = false;
+      });
+
+      sensor.start();
+
+      liveCompassActive = true;
+
+      startCompassTimeout();
+    } catch (error) {
+      console.error("Kompass konnte nicht gestartet werden:", error);
+
+      compassPermissionDenied = true;
+      compassInitializing = false;
     }
   }
-
   // Deaktivieren
+  // function stopLiveCompass() {
+
+  //   calibrationRecommended = false;
+  //   unstableCounter = 0;
+  //   lastHeading = 0;
+  //   if (typeof window !== "undefined") {
+  //     // Auch hier nutzen wir das globale window-Objekt sicher ohne Typenkonflikt
+  //     window.removeEventListener("deviceorientation", handleOrientation, true);
+  //     window.removeEventListener(
+  //       "deviceorientationabsolute",
+  //       handleOrientation,
+  //       true,
+  //     );
+  //   }
+
+  //   liveCompassActive = false;
+  //   isAligned = false;
+  //   deviceHeading = 0;
+  // }
   function stopLiveCompass() {
+    if (absoluteCompassSensor) {
+      try {
+        absoluteCompassSensor.stop();
+      } catch (error) {
+        console.error("Kompass-Sensor konnte nicht gestoppt werden:", error);
+      }
+
+      absoluteCompassSensor = null;
+    }
+
     calibrationRecommended = false;
     unstableCounter = 0;
     lastHeading = 0;
-    if (typeof window !== "undefined") {
-      // Auch hier nutzen wir das globale window-Objekt sicher ohne Typenkonflikt
-      window.removeEventListener("deviceorientation", handleOrientation, true);
-      window.removeEventListener(
-        "deviceorientationabsolute",
-        handleOrientation,
-        true,
-      );
-    }
 
     liveCompassActive = false;
     isAligned = false;
@@ -1203,28 +1330,6 @@
 
                   <p class="text-sm text-white/50">
                     Kompass: {Math.round(deviceHeading)}°
-                  </p>
-                  <p class="text-xs text-yellow-300">
-                    alpha: {debugAlpha !== null ? Math.round(debugAlpha) : "-"}°
-                  </p>
-
-                  <p class="text-xs text-yellow-300">
-                    beta: {debugBeta !== null ? Math.round(debugBeta) : "-"}°
-                  </p>
-
-                  <p class="text-xs text-yellow-300">
-                    gamma: {debugGamma !== null ? Math.round(debugGamma) : "-"}°
-                  </p>
-
-                  <p class="text-xs text-yellow-300">
-                    webkitHeading:
-                    {debugWebkitHeading !== null
-                      ? Math.round(debugWebkitHeading)
-                      : "nicht vorhanden"}
-                  </p>
-
-                  <p class="text-xs text-yellow-300">
-                    absolute: {debugAbsolute ? "true" : "false"}
                   </p>
 
                   <p class="text-sm text-white/50">
