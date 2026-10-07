@@ -292,12 +292,25 @@
       // 2. 🤖 Android / Chrome: Wir nutzen 'globalThis', um dem 'never'-Typ-Fehler zu entkommen
       const currentWindow = window as any;
 
+      // if ("ondeviceorientationabsolute" in currentWindow) {
+      //   window.addEventListener(
+      //     "deviceorientationabsolute",
+      //     handleOrientation,
+      //     true,
+      //   );
+      //   liveCompassActive = true;
+      //   startCompassTimeout();
+      // }
       if ("ondeviceorientationabsolute" in currentWindow) {
         window.addEventListener(
           "deviceorientationabsolute",
-          handleOrientation,
+          (event: DeviceOrientationEvent) => {
+            debugAbsolute = true;
+            handleOrientation(event);
+          },
           true,
         );
+
         liveCompassActive = true;
         startCompassTimeout();
       } else if ("ondeviceorientation" in currentWindow) {
