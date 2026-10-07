@@ -62,6 +62,7 @@
   let absoluteSensorStarted = $state(false);
   let absoluteSensorError = $state("");
   let absoluteHeading = $state<number | null>(null);
+  let debugQuaternion = $state("");
 
   let hasCompassData = $state(false);
   let calibrationRecommended = $state(false);
@@ -288,6 +289,7 @@
         if (!quaternion || quaternion.length < 4) return;
 
         const [x, y, z, w] = quaternion;
+        debugQuaternion = `${x.toFixed(3)}, ${y.toFixed(3)}, ${z.toFixed(3)}, ${w.toFixed(3)}`;
 
         // Quaternion → Heading
         const sinYaw = 2 * (w * z + x * y);
@@ -1208,6 +1210,9 @@
                   {#if absoluteSensorStarted}
                     <p class="text-xs text-emerald-300">Sensor: gestartet</p>
                   {/if}
+                  <p class="text-xs text-blue-300 break-all">
+                    Quaternion: {debugQuaternion}
+                  </p>
 
                   {#if absoluteSensorError}
                     <p class="text-xs text-red-300">
