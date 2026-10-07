@@ -328,6 +328,23 @@
           `Y: ${axisY.x.toFixed(2)}, ${axisY.y.toFixed(2)}, ${axisY.z.toFixed(2)} | ` +
           `Z: ${axisZ.x.toFixed(2)}, ${axisZ.y.toFixed(2)}, ${axisZ.z.toFixed(2)}`;
 
+        const axisX = rotateVector(1, 0, 0, x, y, z, w);
+        const axisY = rotateVector(0, 1, 0, x, y, z, w);
+        const axisZ = rotateVector(0, 0, 1, x, y, z, w);
+
+        debugAxes =
+          `X: ${axisX.x.toFixed(2)}, ${axisX.y.toFixed(2)}, ${axisX.z.toFixed(2)} | ` +
+          `Y: ${axisY.x.toFixed(2)}, ${axisY.y.toFixed(2)}, ${axisY.z.toFixed(2)} | ` +
+          `Z: ${axisZ.x.toFixed(2)}, ${axisZ.y.toFixed(2)}, ${axisZ.z.toFixed(2)}`;
+
+        // HIER EINFÜGEN
+        const heading = Math.atan2(axisY.x, axisY.y);
+
+        let normalizedHeading = (heading * 180) / Math.PI;
+        normalizedHeading = (normalizedHeading + 360) % 360;
+
+        absoluteHeading = normalizedHeading;
+
         absoluteSensorStarted = true;
       });
 
