@@ -239,7 +239,10 @@
     lastHeading = currentHeading;
 
     if (qiblaAngle !== null) {
-      isAligned = currentHeading <= 8 || currentHeading >= 352;
+      const difference = Math.abs(currentHeading - qiblaAngle);
+      const normalizedDifference = Math.min(difference, 360 - difference);
+
+      isAligned = normalizedDifference <= 8;
     }
   }
 
@@ -1081,14 +1084,14 @@
                     >Kıble Açısı</span
                   >
 
-                  <!-- <p class="text-sm text-white/50">
+                  <p class="text-sm text-white/50">
                     Kompass: {Math.round(deviceHeading)}°
-                  </p> -->
-<!-- 
+                  </p>
+
                   <p class="text-sm text-white/50">
                     Kıble: {qiblaAngle}°
                   </p>
-            -->
+
                   {#if qiblaAvailable && qiblaAngle !== null}
                     <span class="text-sm font-bold text-white font-mono">
                       {qiblaAngle}°
