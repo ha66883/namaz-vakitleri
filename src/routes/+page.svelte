@@ -58,6 +58,10 @@
   let isAligned = $state(false);
   let compassPermissionDenied = $state(false);
 
+  let absoluteSensorSupported = $state(false);
+  let absoluteSensorStarted = $state(false);
+  let absoluteSensorError = $state("");
+
   let hasCompassData = $state(false);
   let calibrationRecommended = $state(false);
   let unstableCounter = 0;
@@ -253,6 +257,41 @@
       const normalizedDifference = Math.min(difference, 360 - difference);
 
       isAligned = normalizedDifference <= 8;
+    }
+  }
+
+  async function testAbsoluteOrientationSensor() {
+    absoluteSensorSupported = false;
+    absoluteSensorStarted = false;
+    absoluteSensorError = "";
+
+    try {
+      const Sensor = (window as any).AbsoluteOrientationSensor;
+
+      if (!Sensor) {
+        absoluteSensorError = "AbsoluteOrientationSensor nicht verfügbar";
+        return;
+      }
+
+      absoluteSensorSupported = true;
+
+      const sensor = new Sensor({
+        frequency: 10,
+        referenceFrame: "device",
+      });
+
+      sensor.addEventListener("reading", () => {
+        absoluteSensorStarted = true;
+      });
+
+      sensor.addEventListener("error", (event: any) => {
+        absoluteSensorError =
+          event?.error?.name || "Sensor konnte nicht gestartet werden";
+      });
+
+      sensor.start();
+    } catch (error: any) {
+      absoluteSensorError = error?.message || String(error);
     }
   }
 
@@ -1136,6 +1175,29 @@
                   <p class="text-sm text-white/50">
                     Kıble: {qiblaAngle}°
                   </p>
+
+                  <button
+                    onclick={testAbsoluteOrientationSensor}
+                    class="mt-3 w-full rounded-xl bg-blue-500/20 px-3 py-2 text-xs text-blue-200"
+                  >
+                    Absolute Sensor testen
+                  </button>
+
+                  {#if absoluteSensorSupported}
+                    <p class="text-xs text-blue-300">API: verfügbar</p>
+                  {:else}
+                    <p class="text-xs text-yellow-300">API: nicht verfügbar</p>
+                  {/if}
+
+                  {#if absoluteSensorStarted}
+                    <p class="text-xs text-emerald-300">Sensor: gestartet</p>
+                  {/if}
+
+                  {#if absoluteSensorError}
+                    <p class="text-xs text-red-300">
+                      Fehler: {absoluteSensorError}
+                    </p>
+                  {/if}
 
                   {#if qiblaAvailable && qiblaAngle !== null}
                     <span class="text-sm font-bold text-white font-mono">
