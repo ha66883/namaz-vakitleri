@@ -50,11 +50,6 @@
 
   let liveCompassActive = $state(false);
   let deviceHeading = $state(0); // Wohin das Handy gerade schaut (0 = Nord)
-  let debugAlpha = $state<number | null>(null);
-  let debugBeta = $state<number | null>(null);
-  let debugGamma = $state<number | null>(null);
-  let debugWebkitHeading = $state<number | null>(null);
-  let debugAbsolute = $state(false);
   let isAligned = $state(false);
   let compassPermissionDenied = $state(false);
 
@@ -215,54 +210,6 @@
     return (qiblaAngle - deviceHeading + 360) % 360;
   });
 
-  // function handleOrientation(event: DeviceOrientationEvent) {
-  //   debugAlpha = event.alpha;
-  //   debugBeta = event.beta;
-  //   debugGamma = event.gamma;
-  //   debugAbsolute = event.absolute;
-  //   debugWebkitHeading =
-  //     typeof (event as any).webkitCompassHeading === "number"
-  //       ? (event as any).webkitCompassHeading
-  //       : null;
-  //   let currentHeading = 0;
-
-  //   if ("webkitCompassHeading" in event) {
-  //     const rawHeading = (event as any).webkitCompassHeading;
-
-  //     if (typeof rawHeading !== "number") return;
-
-  //     currentHeading = rawHeading;
-  //   } else if (event.alpha !== null) {
-  //     currentHeading = (360 - event.alpha + 360) % 360;
-  //   } else {
-  //     return;
-  //   }
-
-  //   hasCompassData = true;
-  //   compassInitializing = false;
-  //   deviceHeading = currentHeading;
-
-  //   const difference = Math.abs(currentHeading - lastHeading);
-
-  //   if (difference > 15) {
-  //     unstableCounter++;
-  //   } else {
-  //     unstableCounter = Math.max(0, unstableCounter - 1);
-  //   }
-
-  //   if (unstableCounter > 20) {
-  //     calibrationRecommended = true;
-  //   }
-
-  //   lastHeading = currentHeading;
-
-  //   if (qiblaAngle !== null) {
-  //     const difference = Math.abs(currentHeading - qiblaAngle);
-  //     const normalizedDifference = Math.min(difference, 360 - difference);
-
-  //     isAligned = normalizedDifference <= 8;
-  //   }
-  // }
 
   async function testAbsoluteOrientationSensor() {
     absoluteSensorSupported = false;
@@ -350,72 +297,6 @@
       absoluteSensorError = error?.message || String(error);
     }
   }
-  // Aktivieren
-  // async function startLiveCompass() {
-  //   compassInitializing = true;
-  //   calibrationRecommended = false;
-  //   unstableCounter = 0;
-  //   lastHeading = 0;
-  //   hasCompassData = false;
-  //   compassPermissionDenied = false;
-
-  //   // Sichere Prüfung für Server-Side-Rendering (SSR)
-  //   if (typeof window === "undefined") return;
-  //   isAligned = false;
-
-  //   // 1. 🍏 iOS / Safari Spezifisch
-  //   if (
-  //     typeof DeviceOrientationEvent !== "undefined" &&
-  //     typeof (DeviceOrientationEvent as any).requestPermission === "function"
-  //   ) {
-  //     try {
-  //       const permission = await (
-  //         DeviceOrientationEvent as any
-  //       ).requestPermission();
-  //       if (permission === "granted") {
-  //         window.addEventListener("deviceorientation", handleOrientation, true);
-  //         liveCompassActive = true;
-  //         startCompassTimeout();
-  //       } else {
-  //         compassPermissionDenied = true;
-  //       }
-  //     } catch (e) {
-  //       console.error(e);
-  //     }
-  //   } else {
-  //     // 2. 🤖 Android / Chrome: Wir nutzen 'globalThis', um dem 'never'-Typ-Fehler zu entkommen
-  //     const currentWindow = window as any;
-
-  //     // if ("ondeviceorientationabsolute" in currentWindow) {
-  //     //   window.addEventListener(
-  //     //     "deviceorientationabsolute",
-  //     //     handleOrientation,
-  //     //     true,
-  //     //   );
-  //     //   liveCompassActive = true;
-  //     //   startCompassTimeout();
-  //     // }
-  //     if ("ondeviceorientationabsolute" in currentWindow) {
-  //       window.addEventListener(
-  //         "deviceorientationabsolute",
-  //         (event: DeviceOrientationEvent) => {
-  //           debugAbsolute = true;
-  //           handleOrientation(event);
-  //         },
-  //         true,
-  //       );
-
-  //       liveCompassActive = true;
-  //       startCompassTimeout();
-  //     } else if ("ondeviceorientation" in currentWindow) {
-  //       window.addEventListener("deviceorientation", handleOrientation, true);
-  //       liveCompassActive = true;
-  //       startCompassTimeout();
-  //     } else {
-  //       compassPermissionDenied = true;
-  //     }
-  //   }
-  // }
 
   async function startLiveCompass() {
     compassInitializing = true;
@@ -524,26 +405,7 @@
       compassInitializing = false;
     }
   }
-  // Deaktivieren
-  // function stopLiveCompass() {
-
-  //   calibrationRecommended = false;
-  //   unstableCounter = 0;
-  //   lastHeading = 0;
-  //   if (typeof window !== "undefined") {
-  //     // Auch hier nutzen wir das globale window-Objekt sicher ohne Typenkonflikt
-  //     window.removeEventListener("deviceorientation", handleOrientation, true);
-  //     window.removeEventListener(
-  //       "deviceorientationabsolute",
-  //       handleOrientation,
-  //       true,
-  //     );
-  //   }
-
-  //   liveCompassActive = false;
-  //   isAligned = false;
-  //   deviceHeading = 0;
-  // }
+ 
   function stopLiveCompass() {
     if (absoluteCompassSensor) {
       try {
@@ -1327,16 +1189,16 @@
                     class="text-[10px] uppercase text-orange-200/50 block tracking-wider"
                     >Kıble Açısı</span
                   >
-
+<!-- 
                   <p class="text-sm text-white/50">
                     Kompass: {Math.round(deviceHeading)}°
                   </p>
 
                   <p class="text-sm text-white/50">
                     Kıble: {qiblaAngle}°
-                  </p>
+                  </p> -->
 
-                  <button
+                  <!-- <button
                     onclick={testAbsoluteOrientationSensor}
                     class="mt-3 w-full rounded-xl bg-blue-500/20 px-3 py-2 text-xs text-blue-200"
                   >
@@ -1369,7 +1231,7 @@
                   {/if}
                   <p class="text-xs text-blue-300 break-all">
                     Achsen: {debugAxes}
-                  </p>
+                  </p> -->
 
                   {#if qiblaAvailable && qiblaAngle !== null}
                     <span class="text-sm font-bold text-white font-mono">
