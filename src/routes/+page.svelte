@@ -289,13 +289,26 @@
         if (!quaternion || quaternion.length < 4) return;
 
         const [x, y, z, w] = quaternion;
+
         debugQuaternion = `${x.toFixed(3)}, ${y.toFixed(3)}, ${z.toFixed(3)}, ${w.toFixed(3)}`;
 
-        // Quaternion → Heading
-        const sinYaw = 2 * (w * z + x * y);
-        const cosYaw = 1 - 2 * (y * y + z * z);
+        // Quaternion auf den Geräte-Vektor "oben" anwenden
+        const vx = 0;
+        const vy = 1;
+        const vz = 0;
 
-        let heading = Math.atan2(sinYaw, cosYaw);
+        const ix = w * vx + y * vz - z * vy;
+        const iy = w * vy + z * vx - x * vz;
+        const iz = w * vz + x * vy - y * vx;
+        const iw = -x * vx - y * vy - z * vz;
+
+        // rotierter Vektor
+        const rx = ix * w + iw * -x + iy * -z - iz * -y;
+        const ry = iy * w + iw * -y + iz * -x - ix * -z;
+        const rz = iz * w + iw * -z + ix * -y - iy * -x;
+
+        // Heading berechnen
+        let heading = Math.atan2(rx, -rz);
         heading = (heading * 180) / Math.PI;
         heading = (heading + 360) % 360;
 
