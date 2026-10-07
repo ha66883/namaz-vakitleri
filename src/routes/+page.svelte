@@ -239,9 +239,7 @@
     lastHeading = currentHeading;
 
     if (qiblaAngle !== null) {
-      const currentRotation = (qiblaAngle - currentHeading + 360) % 360;
-
-      isAligned = currentRotation <= 4 || currentRotation >= 356;
+      isAligned = currentHeading <= 8 || currentHeading >= 352;
     }
   }
 
