@@ -204,46 +204,88 @@
     // Im Live-Modus: Ziehe die Handy-Blickrichtung vom Qibla-Winkel ab
     return (qiblaAngle - deviceHeading + 360) % 360;
   });
+function handleOrientation(event: DeviceOrientationEvent) {
+  let currentHeading = 0;
 
-  function handleOrientation(event: DeviceOrientationEvent) {
-    let currentHeading = 0;
+  if ("webkitCompassHeading" in event) {
+    const rawHeading = (event as any).webkitCompassHeading;
 
-    // 1. 🍏 iOS / Safari Check
-    if ("webkitCompassHeading" in event) {
-      const rawHeading = (event as any).webkitCompassHeading;
-      currentHeading = (360 - rawHeading + 265 + 360) % 360;
-    }
-    // 2. 🤖 Android / Chrome Check (Mit expliziter Typprüfung auf null!)
-    else if (event.alpha !== null) {
-      // TypeScript weiß jetzt zu 100%, dass event.alpha eine Zahl ist. Das Rot verschwindet!
-      currentHeading = (event.alpha - 100 + 360) % 360;
-    } else {
-      // Sensor liefert keine brauchbaren Daten
-      return;
-    }
+    if (typeof rawHeading !== "number") return;
 
-    hasCompassData = true;
-    compassInitializing = false;
-    deviceHeading = currentHeading;
-    const difference = Math.abs(currentHeading - lastHeading);
-
-    if (difference > 15) {
-      unstableCounter++;
-    } else {
-      unstableCounter = Math.max(0, unstableCounter - 1);
-    }
-
-    if (unstableCounter > 20) {
-      calibrationRecommended = true;
-    }
-
-    lastHeading = currentHeading;
-
-    if (qiblaAngle !== null) {
-      const currentRotation = (qiblaAngle - currentHeading + 360) % 360;
-      isAligned = currentRotation <= 4 || currentRotation >= 356;
-    }
+    currentHeading = rawHeading;
+  } else if (event.alpha !== null) {
+    currentHeading = (360 - event.alpha + 360) % 360;
+  } else {
+    return;
   }
+
+  hasCompassData = true;
+  compassInitializing = false;
+  deviceHeading = currentHeading;
+
+  const difference = Math.abs(currentHeading - lastHeading);
+
+  if (difference > 15) {
+    unstableCounter++;
+  } else {
+    unstableCounter = Math.max(0, unstableCounter - 1);
+  }
+
+  if (unstableCounter > 20) {
+    calibrationRecommended = true;
+  }
+
+  lastHeading = currentHeading;
+
+  if (qiblaAngle !== null) {
+    const currentRotation =
+      (qiblaAngle - currentHeading + 360) % 360;
+
+    isAligned =
+      currentRotation <= 4 ||
+      currentRotation >= 356;
+  }
+}
+
+  // function handleOrientation(event: DeviceOrientationEvent) {
+  //   let currentHeading = 0;
+
+  //   // 1. 🍏 iOS / Safari Check
+  //   if ("webkitCompassHeading" in event) {
+  //     const rawHeading = (event as any).webkitCompassHeading;
+  //     currentHeading = (360 - rawHeading + 265 + 360) % 360;
+  //   }
+  //   // 2. 🤖 Android / Chrome Check (Mit expliziter Typprüfung auf null!)
+  //   else if (event.alpha !== null) {
+  //     // TypeScript weiß jetzt zu 100%, dass event.alpha eine Zahl ist. Das Rot verschwindet!
+  //     currentHeading = (event.alpha - 100 + 360) % 360;
+  //   } else {
+  //     // Sensor liefert keine brauchbaren Daten
+  //     return;
+  //   }
+
+  //   hasCompassData = true;
+  //   compassInitializing = false;
+  //   deviceHeading = currentHeading;
+  //   const difference = Math.abs(currentHeading - lastHeading);
+
+  //   if (difference > 15) {
+  //     unstableCounter++;
+  //   } else {
+  //     unstableCounter = Math.max(0, unstableCounter - 1);
+  //   }
+
+  //   if (unstableCounter > 20) {
+  //     calibrationRecommended = true;
+  //   }
+
+  //   lastHeading = currentHeading;
+
+  //   if (qiblaAngle !== null) {
+  //     const currentRotation = (qiblaAngle - currentHeading + 360) % 360;
+  //     isAligned = currentRotation <= 4 || currentRotation >= 356;
+  //   }
+  // }
 
   // Aktivieren
   async function startLiveCompass() {
@@ -524,7 +566,6 @@
       loading = false;
     }
   }
-
 
   function fetchHadith() {
     const today = new Date().getDate();
@@ -1071,6 +1112,14 @@
                     class="text-[10px] uppercase text-orange-200/50 block tracking-wider"
                     >Kıble Açısı</span
                   >
+
+                  <p class="text-sm text-white/50">
+                    Kompass: {Math.round(deviceHeading)}°
+                  </p>
+
+                  <p class="text-sm text-white/50">
+                    Kıble: {qiblaAngle}°
+                  </p>
                   <!-- <span class="text-sm font-bold text-white font-mono"
                     >{qiblaAngle}°</span
                   > -->
