@@ -3,9 +3,6 @@
   import logo from "$lib/assets/logo-goldd.png";
   import { hadiths } from "$lib/data/hadiths";
 
-  let debugAlpha = $state(0);
-  let debugAbsolute = $state(false);
-
   type PrayerTimes = {
     Imsak: string;
     Sunrise: string;
@@ -55,6 +52,14 @@
   let deviceHeading = $state(0); // Wohin das Handy gerade schaut (0 = Nord)
   let isAligned = $state(false);
   let compassPermissionDenied = $state(false);
+
+  let absoluteSensorSupported = $state(false);
+  let absoluteSensorStarted = $state(false);
+  let absoluteSensorError = $state("");
+  let absoluteHeading = $state<number | null>(null);
+  let debugQuaternion = $state("");
+  let debugAxes = $state("");
+  let absoluteCompassSensor: any = null;
 
   let hasCompassData = $state(false);
   let calibrationRecommended = $state(false);
@@ -205,45 +210,94 @@
     return (qiblaAngle - deviceHeading + 360) % 360;
   });
 
-  function handleOrientation(event: DeviceOrientationEvent) {
-    let currentHeading = 0;
 
-    if ("webkitCompassHeading" in event) {
-      const rawHeading = (event as any).webkitCompassHeading;
+  async function testAbsoluteOrientationSensor() {
+    absoluteSensorSupported = false;
+    absoluteSensorStarted = false;
+    absoluteSensorError = "";
+    absoluteHeading = null;
 
-      if (typeof rawHeading !== "number") return;
+    try {
+      const Sensor = (window as any).AbsoluteOrientationSensor;
 
-      currentHeading = rawHeading;
-    } else if (event.alpha !== null) {
-      currentHeading = (360 - event.alpha + 360) % 360;
-    } else {
-      return;
-    }
+      if (!Sensor) {
+        absoluteSensorError = "AbsoluteOrientationSensor nicht verfügbar";
+        return;
+      }
 
-    hasCompassData = true;
-    compassInitializing = false;
-    deviceHeading = currentHeading;
+      absoluteSensorSupported = true;
 
-    const difference = Math.abs(currentHeading - lastHeading);
+      const sensor = new Sensor({
+        frequency: 10,
+        referenceFrame: "device",
+      });
 
-    if (difference > 15) {
-      unstableCounter++;
-    } else {
-      unstableCounter = Math.max(0, unstableCounter - 1);
-    }
+      sensor.addEventListener("reading", () => {
+        const quaternion = sensor.quaternion;
 
-    if (unstableCounter > 20) {
-      calibrationRecommended = true;
-    }
+        if (!quaternion || quaternion.length < 4) return;
 
-    lastHeading = currentHeading;
+        const [x, y, z, w] = quaternion;
 
-    if (qiblaAngle !== null) {
-      isAligned = currentHeading <= 8 || currentHeading >= 352;
+        debugQuaternion = `${x.toFixed(3)}, ${y.toFixed(3)}, ${z.toFixed(3)}, ${w.toFixed(3)}`;
+
+        // Quaternion auf die Geräteachsen anwenden
+        function rotateVector(
+          vx: number,
+          vy: number,
+          vz: number,
+          x: number,
+          y: number,
+          z: number,
+          w: number,
+        ) {
+          const ix = w * vx + y * vz - z * vy;
+          const iy = w * vy + z * vx - x * vz;
+          const iz = w * vz + x * vy - y * vx;
+          const iw = -x * vx - y * vy - z * vz;
+
+          return {
+            x: ix * w + iw * -x + iy * -z - iz * -y,
+            y: iy * w + iw * -y + iz * -x - ix * -z,
+            z: iz * w + iw * -z + ix * -y - iy * -x,
+          };
+        }
+
+        // Geräteachsen:
+        // X = rechts
+        // Y = oben
+        // Z = aus dem Display heraus
+        const axisX = rotateVector(1, 0, 0, x, y, z, w);
+        const axisY = rotateVector(0, 1, 0, x, y, z, w);
+        const axisZ = rotateVector(0, 0, 1, x, y, z, w);
+
+        debugAxes =
+          `X: ${axisX.x.toFixed(2)}, ${axisX.y.toFixed(2)}, ${axisX.z.toFixed(2)} | ` +
+          `Y: ${axisY.x.toFixed(2)}, ${axisY.y.toFixed(2)}, ${axisY.z.toFixed(2)} | ` +
+          `Z: ${axisZ.x.toFixed(2)}, ${axisZ.y.toFixed(2)}, ${axisZ.z.toFixed(2)}`;
+
+        // HIER EINFÜGEN
+        const heading = Math.atan2(axisY.x, axisY.y);
+
+        let normalizedHeading = (heading * 180) / Math.PI;
+        normalizedHeading = (normalizedHeading + 360) % 360;
+
+        absoluteHeading = normalizedHeading;
+
+        absoluteSensorStarted = true;
+      });
+
+      sensor.addEventListener("error", (event: any) => {
+        absoluteSensorError =
+          event?.error?.name || "Sensor konnte nicht gestartet werden";
+      });
+
+      sensor.start();
+    } catch (error: any) {
+      absoluteSensorError = error?.message || String(error);
     }
   }
 
-  // Aktivieren
   async function startLiveCompass() {
     compassInitializing = true;
     calibrationRecommended = false;
@@ -252,65 +306,120 @@
     hasCompassData = false;
     compassPermissionDenied = false;
 
-    // Sichere Prüfung für Server-Side-Rendering (SSR)
     if (typeof window === "undefined") return;
+
     isAligned = false;
 
-    // 1. 🍏 iOS / Safari Spezifisch
-    if (
-      typeof DeviceOrientationEvent !== "undefined" &&
-      typeof (DeviceOrientationEvent as any).requestPermission === "function"
-    ) {
-      try {
-        const permission = await (
-          DeviceOrientationEvent as any
-        ).requestPermission();
-        if (permission === "granted") {
-          window.addEventListener("deviceorientation", handleOrientation, true);
-          liveCompassActive = true;
-          startCompassTimeout();
-        } else {
-          compassPermissionDenied = true;
-        }
-      } catch (e) {
-        console.error(e);
-      }
-    } else {
-      // 2. 🤖 Android / Chrome: Wir nutzen 'globalThis', um dem 'never'-Typ-Fehler zu entkommen
-      const currentWindow = window as any;
+    try {
+      const Sensor = (window as any).AbsoluteOrientationSensor;
 
-      if ("ondeviceorientationabsolute" in currentWindow) {
-        window.addEventListener(
-          "deviceorientationabsolute",
-          handleOrientation,
-          true,
-        );
-        liveCompassActive = true;
-        startCompassTimeout();
-      } else if ("ondeviceorientation" in currentWindow) {
-        window.addEventListener("deviceorientation", handleOrientation, true);
-        liveCompassActive = true;
-        startCompassTimeout();
-      } else {
+      if (!Sensor) {
         compassPermissionDenied = true;
+        compassInitializing = false;
+        return;
       }
+
+      const sensor = new Sensor({
+        frequency: 10,
+        referenceFrame: "device",
+      });
+      absoluteCompassSensor = sensor;
+
+      sensor.addEventListener("reading", () => {
+        const quaternion = sensor.quaternion;
+
+        if (!quaternion || quaternion.length < 4) return;
+
+        const [x, y, z, w] = quaternion;
+
+        // Quaternion → Geräte-Y-Achse
+        const vx = 0;
+        const vy = 1;
+        const vz = 0;
+
+        const ix = w * vx + y * vz - z * vy;
+        const iy = w * vy + z * vx - x * vz;
+        const iz = w * vz + x * vy - y * vx;
+        const iw = -x * vx - y * vy - z * vz;
+
+        const axisY = {
+          x: ix * w + iw * -x + iy * -z - iz * -y,
+          y: iy * w + iw * -y + iz * -x - ix * -z,
+          z: iz * w + iw * -z + ix * -y - iy * -x,
+        };
+
+        // Geräte-Y-Achse → Kompassrichtung
+        const heading = Math.atan2(axisY.x, axisY.y);
+
+        let currentHeading = (heading * 180) / Math.PI;
+        currentHeading = (currentHeading + 360) % 360;
+
+        hasCompassData = true;
+        compassInitializing = false;
+
+        deviceHeading = currentHeading;
+
+        const difference = Math.abs(currentHeading - lastHeading);
+        const normalizedDifference = Math.min(difference, 360 - difference);
+
+        if (normalizedDifference > 15) {
+          unstableCounter++;
+        } else {
+          unstableCounter = Math.max(0, unstableCounter - 1);
+        }
+
+        if (unstableCounter > 20) {
+          calibrationRecommended = true;
+        }
+
+        lastHeading = currentHeading;
+
+        if (qiblaAngle !== null) {
+          const qiblaDifference = Math.abs(currentHeading - qiblaAngle);
+
+          const normalizedQiblaDifference = Math.min(
+            qiblaDifference,
+            360 - qiblaDifference,
+          );
+
+          isAligned = normalizedQiblaDifference <= 8;
+        }
+      });
+
+      sensor.addEventListener("error", (event: any) => {
+        console.error("AbsoluteOrientationSensor:", event);
+
+        compassPermissionDenied = true;
+        compassInitializing = false;
+      });
+
+      sensor.start();
+
+      liveCompassActive = true;
+
+      startCompassTimeout();
+    } catch (error) {
+      console.error("Kompass konnte nicht gestartet werden:", error);
+
+      compassPermissionDenied = true;
+      compassInitializing = false;
     }
   }
-
-  // Deaktivieren
+ 
   function stopLiveCompass() {
+    if (absoluteCompassSensor) {
+      try {
+        absoluteCompassSensor.stop();
+      } catch (error) {
+        console.error("Kompass-Sensor konnte nicht gestoppt werden:", error);
+      }
+
+      absoluteCompassSensor = null;
+    }
+
     calibrationRecommended = false;
     unstableCounter = 0;
     lastHeading = 0;
-    if (typeof window !== "undefined") {
-      // Auch hier nutzen wir das globale window-Objekt sicher ohne Typenkonflikt
-      window.removeEventListener("deviceorientation", handleOrientation, true);
-      window.removeEventListener(
-        "deviceorientationabsolute",
-        handleOrientation,
-        true,
-      );
-    }
 
     liveCompassActive = false;
     isAligned = false;
@@ -1080,15 +1189,50 @@
                     class="text-[10px] uppercase text-orange-200/50 block tracking-wider"
                     >Kıble Açısı</span
                   >
-
-                  <!-- <p class="text-sm text-white/50">
-                    Kompass: {Math.round(deviceHeading)}°
-                  </p> -->
 <!-- 
                   <p class="text-sm text-white/50">
-                    Kıble: {qiblaAngle}°
+                    Kompass: {Math.round(deviceHeading)}°
                   </p>
-            -->
+
+                  <p class="text-sm text-white/50">
+                    Kıble: {qiblaAngle}°
+                  </p> -->
+
+                  <!-- <button
+                    onclick={testAbsoluteOrientationSensor}
+                    class="mt-3 w-full rounded-xl bg-blue-500/20 px-3 py-2 text-xs text-blue-200"
+                  >
+                    Absolute Sensor testen
+                  </button>
+
+                  {#if absoluteSensorSupported}
+                    <p class="text-xs text-blue-300">API: verfügbar</p>
+                  {:else}
+                    <p class="text-xs text-yellow-300">API: nicht verfügbar</p>
+                  {/if}
+
+                  {#if absoluteSensorStarted}
+                    <p class="text-xs text-emerald-300">Sensor: gestartet</p>
+                  {/if}
+                  <p class="text-xs text-blue-300 break-all">
+                    Quaternion: {debugQuaternion}
+                  </p>
+
+                  {#if absoluteSensorError}
+                    <p class="text-xs text-red-300">
+                      Fehler: {absoluteSensorError}
+                    </p>
+                  {/if}
+
+                  {#if absoluteHeading !== null}
+                    <p class="text-xs text-blue-300">
+                      Absolute Heading: {Math.round(absoluteHeading)}°
+                    </p>
+                  {/if}
+                  <p class="text-xs text-blue-300 break-all">
+                    Achsen: {debugAxes}
+                  </p> -->
+
                   {#if qiblaAvailable && qiblaAngle !== null}
                     <span class="text-sm font-bold text-white font-mono">
                       {qiblaAngle}°
