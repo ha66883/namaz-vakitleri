@@ -491,40 +491,40 @@
   }
 
   async function fetchPrayerTimes(locationId: number) {
-    const response = await fetch(`/api/prayer-times?locationId=${locationId}`);
+    try {
+      const response = await fetch(
+        `/api/prayer-times?locationId=${locationId}`,
+      );
 
-    const data = await response.json();
+      if (!response.ok) {
+        throw new Error(`Prayer API error: ${response.status}`);
+      }
 
-    if (!Array.isArray(data)) {
-      console.error("Prayer API returned invalid data:", data);
+      const data = await response.json();
 
+      if (!data) {
+        console.error("No prayer timings returned:", data);
+        loading = false;
+        return;
+      }
+
+      prayers = {
+        Imsak: data.Imsak,
+        Sunrise: data.Sunrise,
+        Dhuhr: data.Dhuhr,
+        Asr: data.Asr,
+        Maghrib: data.Maghrib,
+        Isha: data.Isha,
+      };
+
+      calculateNextPrayer();
       loading = false;
-
-      return;
-    }
-
-    const timings = data?.[0];
-
-    if (!timings) {
-      console.error("No timings found for today");
-
+    } catch (error) {
+      console.error("Failed to fetch prayer times:", error);
       loading = false;
-      return;
     }
-
-    prayers = {
-      Imsak: timings.fajr,
-      Sunrise: timings.sun,
-      Dhuhr: timings.dhuhr,
-      Asr: timings.asr,
-      Maghrib: timings.maghrib,
-      Isha: timings.isha,
-    };
-
-    calculateNextPrayer();
-
-    loading = false;
   }
+
 
   function fetchHadith() {
     const today = new Date().getDate();
