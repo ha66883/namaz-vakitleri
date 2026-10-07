@@ -208,23 +208,22 @@
   function handleOrientation(event: DeviceOrientationEvent) {
     let currentHeading = 0;
 
-    // 1. 🍏 iOS / Safari Check
     if ("webkitCompassHeading" in event) {
       const rawHeading = (event as any).webkitCompassHeading;
-      currentHeading = (360 - rawHeading + 265 + 360) % 360;
-    }
-    // 2. 🤖 Android / Chrome Check (Mit expliziter Typprüfung auf null!)
-    else if (event.alpha !== null) {
-      // TypeScript weiß jetzt zu 100%, dass event.alpha eine Zahl ist. Das Rot verschwindet!
-      currentHeading = (event.alpha - 100 + 360) % 360;
+
+      if (typeof rawHeading !== "number") return;
+
+      currentHeading = rawHeading;
+    } else if (event.alpha !== null) {
+      currentHeading = (360 - event.alpha + 360) % 360;
     } else {
-      // Sensor liefert keine brauchbaren Daten
       return;
     }
 
     hasCompassData = true;
     compassInitializing = false;
     deviceHeading = currentHeading;
+
     const difference = Math.abs(currentHeading - lastHeading);
 
     if (difference > 15) {
@@ -240,8 +239,7 @@
     lastHeading = currentHeading;
 
     if (qiblaAngle !== null) {
-      const currentRotation = (qiblaAngle - currentHeading + 360) % 360;
-      isAligned = currentRotation <= 4 || currentRotation >= 356;
+      isAligned = currentHeading <= 8 || currentHeading >= 352;
     }
   }
 
@@ -524,7 +522,6 @@
       loading = false;
     }
   }
-
 
   function fetchHadith() {
     const today = new Date().getDate();
@@ -1030,29 +1027,41 @@
 
               <!-- Die rotierende Kompassnadel -->
               <div
-                class="w-full h-full flex items-center justify-center transition-transform duration-200 ease-out"
-                style="transform: rotate({visualNeedleRotation}deg);"
+                class="absolute inset-0 flex items-center justify-center pointer-events-none"
               >
                 <div
-                  class="relative w-2 h-28 flex flex-col justify-between items-center"
+                  class="relative w-2 h-28 flex flex-col justify-between items-center transition-transform duration-200 ease-out origin-center"
+                  style={`transform: rotate(${visualNeedleRotation}deg);`}
                 >
-                  <!-- Pfeilspitze (Wechselt bei Erfolg zu Grün) -->
+                  <!-- Pfeilspitze -->
                   <div
-                    class="w-0 h-0 border-l-[8px] border-r-[8px] border-b-[24px] border-l-transparent border-r-transparent transition-colors duration-300
-              {isAligned
-                      ? 'border-b-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.6)]'
-                      : 'border-b-orange-400 drop-shadow-[0_0_8px_rgba(251,146,60,0.6)]'}"
+                    class={`w-0 h-0 border-l-[8px] border-r-[8px] border-b-[24px]
+        border-l-transparent border-r-transparent
+        transition-colors duration-300
+        ${
+          isAligned
+            ? "border-b-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.6)]"
+            : "border-b-orange-400 drop-shadow-[0_0_8px_rgba(251,146,60,0.6)]"
+        }`}
                   ></div>
 
-                  <!-- Kaaba-Icon steht fest auf der Spitze -->
+                  <!-- Kaaba bleibt an der Spitze der Nadel -->
                   <span class="absolute -top-6 text-sm">🕋</span>
 
                   <!-- Unteres Ende der Nadel -->
                   <div
-                    class="w-0 h-0 border-l-[6px] border-r-[6px] border-t-[18px] border-l-transparent border-r-transparent border-t-white/30"
+                    class="w-0 h-0 border-l-[6px] border-r-[6px] border-t-[18px]
+        border-l-transparent border-r-transparent border-t-white/30"
                   ></div>
                 </div>
               </div>
+
+              <!-- Zentraler Achsen-Pin -->
+              <div
+                class="absolute w-3 h-3 bg-white rounded-full border shadow-md transition-colors {isAligned
+                  ? 'border-emerald-500'
+                  : 'border-orange-500'}"
+              ></div>
 
               <!-- Zentraler Achsen-Pin -->
               <div
@@ -1071,10 +1080,15 @@
                     class="text-[10px] uppercase text-orange-200/50 block tracking-wider"
                     >Kıble Açısı</span
                   >
-                  <!-- <span class="text-sm font-bold text-white font-mono"
-                    >{qiblaAngle}°</span
-                  > -->
 
+                  <!-- <p class="text-sm text-white/50">
+                    Kompass: {Math.round(deviceHeading)}°
+                  </p> -->
+<!-- 
+                  <p class="text-sm text-white/50">
+                    Kıble: {qiblaAngle}°
+                  </p>
+            -->
                   {#if qiblaAvailable && qiblaAngle !== null}
                     <span class="text-sm font-bold text-white font-mono">
                       {qiblaAngle}°
@@ -1191,13 +1205,6 @@
                   </span>
                   dereceye dönerek kıbleyi bulabilirsiniz.
                 </p>
-
-                <!-- <button
-                  onclick={startLiveCompass}
-                  class="w-full py-2.5 px-4 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-medium text-sm rounded-xl shadow-lg shadow-orange-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                >
-                  🧭 Canlı Kıble Pusulası
-                </button> -->
 
                 {#if qiblaAvailable}
                   <button
