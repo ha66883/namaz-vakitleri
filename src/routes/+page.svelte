@@ -3,9 +3,6 @@
   import logo from "$lib/assets/logo-goldd.png";
   import { hadiths } from "$lib/data/hadiths";
 
-  let debugAlpha = $state(0);
-  let debugAbsolute = $state(false);
-
   type PrayerTimes = {
     Imsak: string;
     Sunrise: string;
@@ -53,6 +50,11 @@
 
   let liveCompassActive = $state(false);
   let deviceHeading = $state(0); // Wohin das Handy gerade schaut (0 = Nord)
+  let debugAlpha = $state<number | null>(null);
+  let debugBeta = $state<number | null>(null);
+  let debugGamma = $state<number | null>(null);
+  let debugWebkitHeading = $state<number | null>(null);
+  let debugAbsolute = $state(false);
   let isAligned = $state(false);
   let compassPermissionDenied = $state(false);
 
@@ -206,6 +208,14 @@
   });
 
   function handleOrientation(event: DeviceOrientationEvent) {
+    debugAlpha = event.alpha;
+    debugBeta = event.beta;
+    debugGamma = event.gamma;
+    debugAbsolute = event.absolute;
+    debugWebkitHeading =
+      typeof (event as any).webkitCompassHeading === "number"
+        ? (event as any).webkitCompassHeading
+        : null;
     let currentHeading = 0;
 
     if ("webkitCompassHeading" in event) {
@@ -1086,6 +1096,28 @@
 
                   <p class="text-sm text-white/50">
                     Kompass: {Math.round(deviceHeading)}°
+                  </p>
+                  <p class="text-xs text-yellow-300">
+                    alpha: {debugAlpha !== null ? Math.round(debugAlpha) : "-"}°
+                  </p>
+
+                  <p class="text-xs text-yellow-300">
+                    beta: {debugBeta !== null ? Math.round(debugBeta) : "-"}°
+                  </p>
+
+                  <p class="text-xs text-yellow-300">
+                    gamma: {debugGamma !== null ? Math.round(debugGamma) : "-"}°
+                  </p>
+
+                  <p class="text-xs text-yellow-300">
+                    webkitHeading:
+                    {debugWebkitHeading !== null
+                      ? Math.round(debugWebkitHeading)
+                      : "nicht vorhanden"}
+                  </p>
+
+                  <p class="text-xs text-yellow-300">
+                    absolute: {debugAbsolute ? "true" : "false"}
                   </p>
 
                   <p class="text-sm text-white/50">
