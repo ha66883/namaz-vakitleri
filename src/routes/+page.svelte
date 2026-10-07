@@ -63,6 +63,7 @@
   let absoluteSensorError = $state("");
   let absoluteHeading = $state<number | null>(null);
   let debugQuaternion = $state("");
+  let debugAxes = $state("");
 
   let hasCompassData = $state(false);
   let calibrationRecommended = $state(false);
@@ -292,27 +293,41 @@
 
         debugQuaternion = `${x.toFixed(3)}, ${y.toFixed(3)}, ${z.toFixed(3)}, ${w.toFixed(3)}`;
 
-        // Quaternion auf den Geräte-Vektor "oben" anwenden
-        const vx = 0;
-        const vy = 1;
-        const vz = 0;
+        // Quaternion auf die Geräteachsen anwenden
+        function rotateVector(
+          vx: number,
+          vy: number,
+          vz: number,
+          x: number,
+          y: number,
+          z: number,
+          w: number,
+        ) {
+          const ix = w * vx + y * vz - z * vy;
+          const iy = w * vy + z * vx - x * vz;
+          const iz = w * vz + x * vy - y * vx;
+          const iw = -x * vx - y * vy - z * vz;
 
-        const ix = w * vx + y * vz - z * vy;
-        const iy = w * vy + z * vx - x * vz;
-        const iz = w * vz + x * vy - y * vx;
-        const iw = -x * vx - y * vy - z * vz;
+          return {
+            x: ix * w + iw * -x + iy * -z - iz * -y,
+            y: iy * w + iw * -y + iz * -x - ix * -z,
+            z: iz * w + iw * -z + ix * -y - iy * -x,
+          };
+        }
 
-        // rotierter Vektor
-        const rx = ix * w + iw * -x + iy * -z - iz * -y;
-        const ry = iy * w + iw * -y + iz * -x - ix * -z;
-        const rz = iz * w + iw * -z + ix * -y - iy * -x;
+        // Geräteachsen:
+        // X = rechts
+        // Y = oben
+        // Z = aus dem Display heraus
+        const axisX = rotateVector(1, 0, 0, x, y, z, w);
+        const axisY = rotateVector(0, 1, 0, x, y, z, w);
+        const axisZ = rotateVector(0, 0, 1, x, y, z, w);
 
-        // Heading berechnen
-        let heading = Math.atan2(rx, -rz);
-        heading = (heading * 180) / Math.PI;
-        heading = (heading + 360) % 360;
+        debugAxes =
+          `X: ${axisX.x.toFixed(2)}, ${axisX.y.toFixed(2)}, ${axisX.z.toFixed(2)} | ` +
+          `Y: ${axisY.x.toFixed(2)}, ${axisY.y.toFixed(2)}, ${axisY.z.toFixed(2)} | ` +
+          `Z: ${axisZ.x.toFixed(2)}, ${axisZ.y.toFixed(2)}, ${axisZ.z.toFixed(2)}`;
 
-        absoluteHeading = heading;
         absoluteSensorStarted = true;
       });
 
@@ -1238,6 +1253,9 @@
                       Absolute Heading: {Math.round(absoluteHeading)}°
                     </p>
                   {/if}
+                  <p class="text-xs text-blue-300 break-all">
+                    Achsen: {debugAxes}
+                  </p>
 
                   {#if qiblaAvailable && qiblaAngle !== null}
                     <span class="text-sm font-bold text-white font-mono">
