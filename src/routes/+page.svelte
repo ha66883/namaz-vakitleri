@@ -204,48 +204,92 @@
     // Im Live-Modus: Ziehe die Handy-Blickrichtung vom Qibla-Winkel ab
     return (qiblaAngle - deviceHeading + 360) % 360;
   });
-function handleOrientation(event: DeviceOrientationEvent) {
-  let currentHeading = 0;
 
-  if ("webkitCompassHeading" in event) {
-    const rawHeading = (event as any).webkitCompassHeading;
+  function handleOrientation(event: DeviceOrientationEvent) {
+    let currentHeading: number;
 
-    if (typeof rawHeading !== "number") return;
+    if ("webkitCompassHeading" in event) {
+      const rawHeading = (event as any).webkitCompassHeading;
 
-    currentHeading = rawHeading;
-  } else if (event.alpha !== null) {
-    currentHeading = (360 - event.alpha + 360) % 360;
-  } else {
-    return;
+      if (typeof rawHeading !== "number") return;
+
+      currentHeading = rawHeading;
+    } else if (event.alpha !== null) {
+      // Bei absoluter Orientierung entspricht alpha
+      // direkt der Himmelsrichtung:
+      // 0° = Norden, 90° = Westen, 180° = Süden, 270° = Osten
+      currentHeading = event.alpha;
+    } else {
+      return;
+    }
+
+    hasCompassData = true;
+    compassInitializing = false;
+
+    deviceHeading = currentHeading;
+
+    const difference = Math.abs(currentHeading - lastHeading);
+
+    if (difference > 15) {
+      unstableCounter++;
+    } else {
+      unstableCounter = Math.max(0, unstableCounter - 1);
+    }
+
+    if (unstableCounter > 20) {
+      calibrationRecommended = true;
+    }
+
+    lastHeading = currentHeading;
+
+    if (qiblaAngle !== null) {
+      const currentRotation = (qiblaAngle - currentHeading + 360) % 360;
+
+      isAligned = currentRotation <= 4 || currentRotation >= 356;
+    }
   }
+  // function handleOrientation(event: DeviceOrientationEvent) {
+  //   let currentHeading = 0;
 
-  hasCompassData = true;
-  compassInitializing = false;
-  deviceHeading = currentHeading;
+  //   if ("webkitCompassHeading" in event) {
+  //     const rawHeading = (event as any).webkitCompassHeading;
 
-  const difference = Math.abs(currentHeading - lastHeading);
+  //     if (typeof rawHeading !== "number") return;
 
-  if (difference > 15) {
-    unstableCounter++;
-  } else {
-    unstableCounter = Math.max(0, unstableCounter - 1);
-  }
+  //     currentHeading = rawHeading;
+  //   } else if (event.alpha !== null) {
+  //     currentHeading = (360 - event.alpha + 360) % 360;
+  //   } else {
+  //     return;
+  //   }
 
-  if (unstableCounter > 20) {
-    calibrationRecommended = true;
-  }
+  //   hasCompassData = true;
+  //   compassInitializing = false;
+  //   deviceHeading = currentHeading;
 
-  lastHeading = currentHeading;
+  //   const difference = Math.abs(currentHeading - lastHeading);
 
-  if (qiblaAngle !== null) {
-    const currentRotation =
-      (qiblaAngle - currentHeading + 360) % 360;
+  //   if (difference > 15) {
+  //     unstableCounter++;
+  //   } else {
+  //     unstableCounter = Math.max(0, unstableCounter - 1);
+  //   }
 
-    isAligned =
-      currentRotation <= 4 ||
-      currentRotation >= 356;
-  }
-}
+  //   if (unstableCounter > 20) {
+  //     calibrationRecommended = true;
+  //   }
+
+  //   lastHeading = currentHeading;
+
+  //   if (qiblaAngle !== null) {
+  //     const currentRotation =
+  //       (qiblaAngle - currentHeading + 360) % 360;
+
+  //     isAligned =
+  //       currentRotation <= 4 ||
+  //       currentRotation >= 356;
+  //   }
+  // }
 
   // function handleOrientation(event: DeviceOrientationEvent) {
   //   let currentHeading = 0;
