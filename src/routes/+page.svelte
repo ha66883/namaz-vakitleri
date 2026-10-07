@@ -61,6 +61,7 @@
   let absoluteSensorSupported = $state(false);
   let absoluteSensorStarted = $state(false);
   let absoluteSensorError = $state("");
+  let absoluteHeading = $state<number | null>(null);
 
   let hasCompassData = $state(false);
   let calibrationRecommended = $state(false);
@@ -264,6 +265,7 @@
     absoluteSensorSupported = false;
     absoluteSensorStarted = false;
     absoluteSensorError = "";
+    absoluteHeading = null;
 
     try {
       const Sensor = (window as any).AbsoluteOrientationSensor;
@@ -281,6 +283,21 @@
       });
 
       sensor.addEventListener("reading", () => {
+        const quaternion = sensor.quaternion;
+
+        if (!quaternion || quaternion.length < 4) return;
+
+        const [x, y, z, w] = quaternion;
+
+        // Quaternion → Heading
+        const sinYaw = 2 * (w * z + x * y);
+        const cosYaw = 1 - 2 * (y * y + z * z);
+
+        let heading = Math.atan2(sinYaw, cosYaw);
+        heading = (heading * 180) / Math.PI;
+        heading = (heading + 360) % 360;
+
+        absoluteHeading = heading;
         absoluteSensorStarted = true;
       });
 
@@ -294,7 +311,6 @@
       absoluteSensorError = error?.message || String(error);
     }
   }
-
   // Aktivieren
   async function startLiveCompass() {
     compassInitializing = true;
@@ -1196,6 +1212,12 @@
                   {#if absoluteSensorError}
                     <p class="text-xs text-red-300">
                       Fehler: {absoluteSensorError}
+                    </p>
+                  {/if}
+
+                  {#if absoluteHeading !== null}
+                    <p class="text-xs text-blue-300">
+                      Absolute Heading: {Math.round(absoluteHeading)}°
                     </p>
                   {/if}
 
