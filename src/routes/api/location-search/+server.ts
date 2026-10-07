@@ -1,34 +1,54 @@
+
+
 import { json } from "@sveltejs/kit";
 
+const GERMANY_ID = 13;
+
 export async function GET({ url }) {
-  const city = url.searchParams.get("city") ?? "";
-  const normalizedCity = normalizeTurkish(city);
+  const city = url.searchParams.get("city")?.trim() ?? "";
 
-  // const response = await fetch(
-  //   `https://prayertimes.api.abdus.dev/api/diyanet/search?q=${city}`,
-  // );
+  if (!city) {
+    return json([]);
+  }
 
-  const response = await fetch(
-    `https://prayertimes.api.abdus.dev/api/diyanet/search?q=${encodeURIComponent(normalizedCity)}`,
-  );
+  try {
+    // 1. Nordrhein-Westfalen suchen
+    const stateResponse = await fetch(
+      `https://ezanvakti.imsakiyem.com/api/locations/search/states?countryId=${GERMANY_ID}&q=Nordrhein`,
+    );
 
-  const data = await response.json();
+    if (!stateResponse.ok) {
+      throw new Error(`State search failed: ${stateResponse.status}`);
+    }
 
-  return json(data);
-}
+    const stateResult = await stateResponse.json();
+    const state = stateResult?.data?.[0];
 
-function normalizeTurkish(text: string) {
-  return text
-    .replace(/ç/g, "c")
-    .replace(/Ç/g, "C")
-    .replace(/ğ/g, "g")
-    .replace(/Ğ/g, "G")
-    .replace(/ı/g, "i")
-    .replace(/İ/g, "I")
-    .replace(/ö/g, "o")
-    .replace(/Ö/g, "O")
-    .replace(/ş/g, "s")
-    .replace(/Ş/g, "S")
-    .replace(/ü/g, "u")
-    .replace(/Ü/g, "U");
+    if (!state) {
+      throw new Error("Nordrhein-Westfalen could not be found");
+    }
+
+    // 2. Stadt innerhalb von NRW suchen
+    const districtResponse = await fetch(
+      `https://ezanvakti.imsakiyem.com/api/locations/search/districts?stateId=${state._id}&q=${encodeURIComponent(city)}`,
+    );
+
+    if (!districtResponse.ok) {
+      throw new Error(`District search failed: ${districtResponse.status}`);
+    }
+
+    const districtResult = await districtResponse.json();
+
+    // Format passend zu deiner bestehenden +page.svelte
+    const locations = (districtResult?.data ?? []).map((district: any) => ({
+      id: Number(district._id),
+      region: district.name,
+    }));
+
+    return json(locations);
+  } catch (error) {
+    console.error("Location search failed:", error);
+
+    return json({ error: "Location search failed" }, { status: 500 });
+  }
 }
