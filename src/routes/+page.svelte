@@ -206,7 +206,7 @@
   });
 
   function handleOrientation(event: DeviceOrientationEvent) {
-    let currentHeading: number;
+    let currentHeading = 0;
 
     if ("webkitCompassHeading" in event) {
       const rawHeading = (event as any).webkitCompassHeading;
@@ -215,17 +215,13 @@
 
       currentHeading = rawHeading;
     } else if (event.alpha !== null) {
-      // Bei absoluter Orientierung entspricht alpha
-      // direkt der Himmelsrichtung:
-      // 0° = Norden, 90° = Westen, 180° = Süden, 270° = Osten
-      currentHeading = event.alpha;
+      currentHeading = (360 - event.alpha + 360) % 360;
     } else {
       return;
     }
 
     hasCompassData = true;
     compassInitializing = false;
-
     deviceHeading = currentHeading;
 
     const difference = Math.abs(currentHeading - lastHeading);
@@ -248,48 +244,6 @@
       isAligned = currentRotation <= 4 || currentRotation >= 356;
     }
   }
-  // function handleOrientation(event: DeviceOrientationEvent) {
-  //   let currentHeading = 0;
-
-  //   if ("webkitCompassHeading" in event) {
-  //     const rawHeading = (event as any).webkitCompassHeading;
-
-  //     if (typeof rawHeading !== "number") return;
-
-  //     currentHeading = rawHeading;
-  //   } else if (event.alpha !== null) {
-  //     currentHeading = (360 - event.alpha + 360) % 360;
-  //   } else {
-  //     return;
-  //   }
-
-  //   hasCompassData = true;
-  //   compassInitializing = false;
-  //   deviceHeading = currentHeading;
-
-  //   const difference = Math.abs(currentHeading - lastHeading);
-
-  //   if (difference > 15) {
-  //     unstableCounter++;
-  //   } else {
-  //     unstableCounter = Math.max(0, unstableCounter - 1);
-  //   }
-
-  //   if (unstableCounter > 20) {
-  //     calibrationRecommended = true;
-  //   }
-
-  //   lastHeading = currentHeading;
-
-  //   if (qiblaAngle !== null) {
-  //     const currentRotation =
-  //       (qiblaAngle - currentHeading + 360) % 360;
-
-  //     isAligned =
-  //       currentRotation <= 4 ||
-  //       currentRotation >= 356;
-  //   }
-  // }
 
   // function handleOrientation(event: DeviceOrientationEvent) {
   //   let currentHeading = 0;
@@ -1114,30 +1068,68 @@
               >
 
               <!-- Die rotierende Kompassnadel -->
-              <div
+              <!-- <div
                 class="w-full h-full flex items-center justify-center transition-transform duration-200 ease-out"
                 style="transform: rotate({visualNeedleRotation}deg);"
               >
                 <div
                   class="relative w-2 h-28 flex flex-col justify-between items-center"
-                >
-                  <!-- Pfeilspitze (Wechselt bei Erfolg zu Grün) -->
-                  <div
+                > -->
+              <!-- Pfeilspitze (Wechselt bei Erfolg zu Grün) -->
+              <!-- <div
                     class="w-0 h-0 border-l-[8px] border-r-[8px] border-b-[24px] border-l-transparent border-r-transparent transition-colors duration-300
               {isAligned
                       ? 'border-b-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.6)]'
                       : 'border-b-orange-400 drop-shadow-[0_0_8px_rgba(251,146,60,0.6)]'}"
+                  ></div> -->
+
+              <!-- Kaaba-Icon steht fest auf der Spitze -->
+              <!-- <span class="absolute -top-6 text-sm">🕋</span> -->
+
+              <!-- Unteres Ende der Nadel -->
+              <!-- <div
+                    class="w-0 h-0 border-l-[6px] border-r-[6px] border-t-[18px] border-l-transparent border-r-transparent border-t-white/30"
+                  ></div>
+                </div>
+              </div> -->
+
+              <!-- Die rotierende Kompassnadel -->
+              <div
+                class="absolute inset-0 flex items-center justify-center pointer-events-none"
+              >
+                <div
+                  class="relative w-2 h-28 flex flex-col justify-between items-center transition-transform duration-200 ease-out origin-center"
+                  style={`transform: rotate(${visualNeedleRotation}deg);`}
+                >
+                  <!-- Pfeilspitze -->
+                  <div
+                    class={`w-0 h-0 border-l-[8px] border-r-[8px] border-b-[24px]
+        border-l-transparent border-r-transparent
+        transition-colors duration-300
+        ${
+          isAligned
+            ? "border-b-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.6)]"
+            : "border-b-orange-400 drop-shadow-[0_0_8px_rgba(251,146,60,0.6)]"
+        }`}
                   ></div>
 
-                  <!-- Kaaba-Icon steht fest auf der Spitze -->
+                  <!-- Kaaba bleibt an der Spitze der Nadel -->
                   <span class="absolute -top-6 text-sm">🕋</span>
 
                   <!-- Unteres Ende der Nadel -->
                   <div
-                    class="w-0 h-0 border-l-[6px] border-r-[6px] border-t-[18px] border-l-transparent border-r-transparent border-t-white/30"
+                    class="w-0 h-0 border-l-[6px] border-r-[6px] border-t-[18px]
+        border-l-transparent border-r-transparent border-t-white/30"
                   ></div>
                 </div>
               </div>
+
+              <!-- Zentraler Achsen-Pin -->
+              <div
+                class="absolute w-3 h-3 bg-white rounded-full border shadow-md transition-colors {isAligned
+                  ? 'border-emerald-500'
+                  : 'border-orange-500'}"
+              ></div>
 
               <!-- Zentraler Achsen-Pin -->
               <div
