@@ -13,6 +13,7 @@
   };
 
   let loading = $state(true);
+  let apiError = $state("");
 
   let hadithSource = $state("");
 
@@ -210,7 +211,6 @@
     return (qiblaAngle - deviceHeading + 360) % 360;
   });
 
-
   async function testAbsoluteOrientationSensor() {
     absoluteSensorSupported = false;
     absoluteSensorStarted = false;
@@ -405,7 +405,7 @@
       compassInitializing = false;
     }
   }
- 
+
   function stopLiveCompass() {
     if (absoluteCompassSensor) {
       try {
@@ -466,13 +466,39 @@
   }
 
   async function searchCity() {
-    if (!cityInput) return;
+    const city = cityInput.trim();
 
-    const response = await fetch(`/api/location-search?city=${cityInput}`);
+    if (!city) return;
 
-    const data = await response.json();
+    apiError = "";
+    cityResults = [];
 
-    cityResults = data;
+    try {
+      const response = await fetch(
+        `/api/location-search?city=${encodeURIComponent(city)}`,
+      );
+
+      if (!response.ok) {
+        throw new Error(`Location API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (!Array.isArray(data)) {
+        throw new Error("Invalid location response");
+      }
+
+      cityResults = data;
+
+      if (data.length === 0) {
+        apiError = "Für diese Stadt wurden keine Ergebnisse gefunden.";
+      }
+    } catch (error) {
+      console.error("City search failed:", error);
+
+      apiError =
+        "Die Stadtsuche ist momentan nicht erreichbar. Bitte versuche es später erneut.";
+    }
   }
 
   async function selectCity(city: any) {
@@ -598,6 +624,9 @@
   }
 
   async function fetchPrayerTimes(locationId: number) {
+    loading = true;
+    apiError = "";
+
     try {
       const response = await fetch(
         `/api/prayer-times?locationId=${locationId}`,
@@ -609,10 +638,16 @@
 
       const data = await response.json();
 
-      if (!data) {
-        console.error("No prayer timings returned:", data);
-        loading = false;
-        return;
+      if (
+        !data ||
+        !data.Imsak ||
+        !data.Sunrise ||
+        !data.Dhuhr ||
+        !data.Asr ||
+        !data.Maghrib ||
+        !data.Isha
+      ) {
+        throw new Error("Incomplete prayer times response");
       }
 
       prayers = {
@@ -625,9 +660,12 @@
       };
 
       calculateNextPrayer();
-      loading = false;
     } catch (error) {
       console.error("Failed to fetch prayer times:", error);
+
+      apiError =
+        "Die Verbindung zum Gebetszeiten-Dienst ist momentan nicht möglich. Bitte versuche es später erneut.";
+    } finally {
       loading = false;
     }
   }
@@ -733,38 +771,62 @@
 
     navigator.geolocation.getCurrentPosition(
       async (position) => {
-        const lat = position.coords.latitude;
+        try {
+          const lat = position.coords.latitude;
+          const lon = position.coords.longitude;
 
-        const lon = position.coords.longitude;
+          latitude = lat;
+          longitude = lon;
 
-        latitude = lat;
-        longitude = lon;
-        localStorage.setItem("lat", lat.toString());
-        localStorage.setItem("lon", lon.toString());
+          localStorage.setItem("lat", lat.toString());
+          localStorage.setItem("lon", lon.toString());
 
-        const city = await getCity(lat, lon);
-        currentCity = city || "";
-        showCitySelection = false;
-        if (city) {
+          const city = await getCity(lat, lon);
+
+          currentCity = city || "";
+          showCitySelection = false;
+
+          if (!city) {
+            throw new Error("City could not be determined");
+          }
+
           localStorage.setItem("city", city);
+
+          const searchResponse = await fetch(
+            `/api/location-search?city=${encodeURIComponent(city)}`,
+          );
+
+          if (!searchResponse.ok) {
+            throw new Error(`Location search failed: ${searchResponse.status}`);
+          }
+
+          const locations = await searchResponse.json();
+
+          if (!Array.isArray(locations) || locations.length === 0) {
+            throw new Error(`No location found for: ${city}`);
+          }
+
+          const locationId = locations[0].id;
+
+          localStorage.setItem("location-id", locationId.toString());
+
+          await fetchPrayerTimes(locationId);
+
+          fetchHadith();
+        } catch (error) {
+          console.error("Location initialization failed:", error);
+
+          apiError =
+            "Die Standortsuche ist momentan nicht erreichbar. Bitte versuche es später erneut.";
+
+          showCitySelection = false;
+        } finally {
+          loading = false;
         }
-
-        const searchResponse = await fetch(`/api/location-search?city=${city}`);
-
-        const locations = await searchResponse.json();
-
-        const locationId = locations[0].id;
-
-        localStorage.setItem("location-id", locationId.toString());
-
-        await fetchPrayerTimes(locationId);
-
-        fetchHadith();
       },
       () => {
         locationError = true;
         showCitySelection = true;
-
         loading = false;
       },
     );
@@ -868,6 +930,34 @@
         class="mb-5 rounded-[32px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-xl"
       >
         <h2 class="mb-5 text-xl font-semibold">Namaz Vakitleri</h2>
+        {#if apiError}
+          <div
+            role="alert"
+            class="mb-5 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-200"
+          >
+            <p class="font-semibold">
+              ⚠️ Gebetszeiten momentan nicht verfügbar
+            </p>
+
+            <p class="mt-2 text-red-200/80">
+              {apiError}
+            </p>
+
+            <button
+              type="button"
+              onclick={() => {
+                const locationId = localStorage.getItem("location-id");
+
+                if (locationId) {
+                  fetchPrayerTimes(Number(locationId));
+                }
+              }}
+              class="mt-3 rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-2 text-red-100 transition hover:bg-red-500/20"
+            >
+              Erneut versuchen
+            </button>
+          </div>
+        {/if}
 
         {#if loading}
           <div class="space-y-4">
@@ -1189,7 +1279,7 @@
                     class="text-[10px] uppercase text-orange-200/50 block tracking-wider"
                     >Kıble Açısı</span
                   >
-<!-- 
+                  <!-- 
                   <p class="text-sm text-white/50">
                     Kompass: {Math.round(deviceHeading)}°
                   </p>
