@@ -1,5 +1,3 @@
-
-
 import { json } from "@sveltejs/kit";
 
 const GERMANY_ID = 13;
@@ -15,6 +13,9 @@ export async function GET({ url }) {
     // 1. Nordrhein-Westfalen suchen
     const stateResponse = await fetch(
       `https://ezanvakti.imsakiyem.com/api/locations/search/states?countryId=${GERMANY_ID}&q=Nordrhein`,
+      {
+        signal: AbortSignal.timeout(4000),
+      },
     );
 
     if (!stateResponse.ok) {
@@ -31,6 +32,9 @@ export async function GET({ url }) {
     // 2. Stadt innerhalb von NRW suchen
     const districtResponse = await fetch(
       `https://ezanvakti.imsakiyem.com/api/locations/search/districts?stateId=${state._id}&q=${encodeURIComponent(city)}`,
+      {
+        signal: AbortSignal.timeout(4000),
+      },
     );
 
     if (!districtResponse.ok) {
