@@ -37,6 +37,100 @@
   let cityResults = $state<any[]>([]);
 
   let showCitySelection = $state(false);
+  type LocationOption = {
+    id: number;
+    name: string;
+  };
+
+  let countries = $state<LocationOption[]>([]);
+  let states = $state<LocationOption[]>([]);
+  let cities = $state<LocationOption[]>([]);
+
+  let selectedCountryId = $state("");
+  let selectedStateId = $state("");
+  let selectedCityId = $state("");
+
+  let locationLoading = $state(false);
+  let isIos = $state(false);
+  let isStandalone = $state(false);
+  let showIosInstallHelp = $state(false);
+  let hideInstallHint = $state(false);
+
+  async function loadCountries() {
+    locationLoading = true;
+    apiError = "";
+
+    try {
+      const response = await fetch("/api/location-search?type=countries");
+
+      if (!response.ok) throw new Error("Länder konnten nicht geladen werden");
+
+      countries = await response.json();
+    } catch (error) {
+      console.error("Country loading failed:", error);
+      apiError = "Länder konnten nicht geladen werden.";
+    } finally {
+      locationLoading = false;
+    }
+  }
+
+  async function loadStates(countryId: string) {
+    selectedCountryId = countryId;
+    selectedStateId = "";
+    selectedCityId = "";
+
+    states = [];
+    cities = [];
+    cityResults = [];
+
+    if (!countryId) return;
+
+    locationLoading = true;
+    apiError = "";
+
+    try {
+      const response = await fetch(
+        `/api/location-search?type=states&countryId=${countryId}`,
+      );
+
+      if (!response.ok)
+        throw new Error("Regionen konnten nicht geladen werden");
+
+      states = await response.json();
+    } catch (error) {
+      console.error("State loading failed:", error);
+      apiError = "Regionen konnten nicht geladen werden.";
+    } finally {
+      locationLoading = false;
+    }
+  }
+
+  async function loadCities(stateId: string) {
+    selectedStateId = stateId;
+    selectedCityId = "";
+    cities = [];
+    cityResults = [];
+
+    if (!stateId) return;
+
+    locationLoading = true;
+    apiError = "";
+
+    try {
+      const response = await fetch(
+        `/api/location-search?type=cities&stateId=${stateId}`,
+      );
+
+      if (!response.ok) throw new Error("Städte konnten nicht geladen werden");
+
+      cities = await response.json();
+    } catch (error) {
+      console.error("City loading failed:", error);
+      apiError = "Städte konnten nicht geladen werden.";
+    } finally {
+      locationLoading = false;
+    }
+  }
 
   let locationError = $state(false);
 
@@ -465,58 +559,21 @@
     deferredPrompt = null;
   }
 
-  async function searchCity() {
-    const city = cityInput.trim();
+  async function selectCity(city: LocationOption) {
+    currentCity = city.name;
 
-    if (!city) return;
-
-    apiError = "";
-    cityResults = [];
-
-    try {
-      const response = await fetch(
-        `/api/location-search?city=${encodeURIComponent(city)}`,
-      );
-
-      if (!response.ok) {
-        throw new Error(`Location API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      if (!Array.isArray(data)) {
-        throw new Error("Invalid location response");
-      }
-
-      cityResults = data;
-
-      if (data.length === 0) {
-        apiError = "Für diese Stadt wurden keine Ergebnisse gefunden.";
-      }
-    } catch (error) {
-      console.error("City search failed:", error);
-
-      apiError =
-        "Die Stadtsuche ist momentan nicht erreichbar. Bitte versuche es später erneut.";
-    }
-  }
-
-  async function selectCity(city: any) {
-    currentCity = city.region;
-
-    if (currentCity) {
-      localStorage.setItem("city", currentCity);
-    }
+    localStorage.setItem("city", currentCity);
     localStorage.setItem("location-id", city.id.toString());
 
     cityResults = [];
-
     showCitySelection = false;
     locationError = false;
 
     await fetchPrayerTimes(city.id);
 
-    fetchHadith();
+    if (!apiError) {
+      fetchHadith();
+    }
   }
 
   function getPrayerDate(time?: string) {
@@ -680,20 +737,35 @@
     hadithSource = selected.source;
   }
 
-  async function getCity(lat: number, lon: number) {
+  async function getCity(
+    lat: number,
+    lon: number,
+  ): Promise<{ city: string; region: string } | null> {
     const response = await fetch(
       `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
     );
 
-    const data = await response.json();
+    if (!response.ok) {
+      throw new Error("Reverse geocoding failed");
+    }
 
-    return (
-      data.address.city ||
-      data.address.town ||
-      data.address.village ||
-      data.address.municipality ||
-      ""
-    );
+    const data = await response.json();
+    const address = data.address;
+
+    const city =
+      address.city ||
+      address.town ||
+      address.village ||
+      address.municipality ||
+      address.city_district;
+
+    const region = address.state;
+
+    if (!city || !region) {
+      return null;
+    }
+
+    return { city, region };
   }
 
   function getKerahatTimes() {
@@ -747,6 +819,16 @@
 
     document.addEventListener("visibilitychange", handleVisibility);
 
+    const ua = navigator.userAgent;
+
+    isIos =
+      /iPhone|iPad|iPod/.test(ua) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+    isStandalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      (navigator as any).standalone === true;
+
     if (cachedLat && cachedLon) {
       latitude = Number(cachedLat);
       longitude = Number(cachedLon);
@@ -763,6 +845,7 @@
         localStorage.setItem("lon", longitude.toString());
       });
       await fetchPrayerTimes(Number(cachedLocationId));
+      await loadCountries();
 
       fetchHadith();
 
@@ -783,36 +866,78 @@
 
           const city = await getCity(lat, lon);
 
-          currentCity = city || "";
-          showCitySelection = false;
-
           if (!city) {
             throw new Error("City could not be determined");
           }
 
-          localStorage.setItem("city", city);
+          const normalize = (value: string) =>
+            value
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, "")
+              .toLocaleLowerCase("de")
+              .trim();
 
-          const searchResponse = await fetch(
-            `/api/location-search?city=${encodeURIComponent(city)}`,
+          const countriesResponse = await fetch(
+            "/api/location-search?type=countries",
           );
 
-          if (!searchResponse.ok) {
-            throw new Error(`Location search failed: ${searchResponse.status}`);
+          if (!countriesResponse.ok) {
+            throw new Error("Countries could not be loaded");
           }
 
-          const locations = await searchResponse.json();
+          const availableCountries = await countriesResponse.json();
 
-          if (!Array.isArray(locations) || locations.length === 0) {
-            throw new Error(`No location found for: ${city}`);
+          let matchedLocation: LocationOption | undefined;
+
+          // Diyanet durchsucht Regionen und Städte innerhalb der Länder.
+          // Bei einem passenden Stadtnamen verwenden wir die zugehörige Stadt-ID.
+          for (const country of availableCountries) {
+            const statesResponse = await fetch(
+              `/api/location-search?type=states&countryId=${country.id}`,
+            );
+
+            if (!statesResponse.ok) continue;
+
+            const availableStates = await statesResponse.json();
+
+            for (const state of availableStates) {
+              const citiesResponse = await fetch(
+                `/api/location-search?type=cities&stateId=${state.id}`,
+              );
+
+              if (!citiesResponse.ok) continue;
+
+              const availableCities: LocationOption[] =
+                await citiesResponse.json();
+
+              matchedLocation = availableCities.find(
+                (item) => normalize(item.name) === normalize(city),
+              );
+
+              if (matchedLocation) break;
+            }
+
+            if (matchedLocation) break;
           }
 
-          const locationId = locations[0].id;
+          if (!matchedLocation) {
+            currentCity = "";
+            showCitySelection = true;
+            await loadCountries();
+            throw new Error(`No Diyanet location found for: ${city}`);
+          }
 
-          localStorage.setItem("location-id", locationId.toString());
+          currentCity = matchedLocation.name;
+          showCitySelection = false;
 
-          await fetchPrayerTimes(locationId);
+          localStorage.setItem("city", matchedLocation.name);
+          localStorage.setItem("location-id", matchedLocation.id.toString());
 
-          fetchHadith();
+          await fetchPrayerTimes(matchedLocation.id);
+
+          if (!apiError) {
+            fetchHadith();
+          }
         } catch (error) {
           console.error("Location initialization failed:", error);
 
@@ -839,63 +964,143 @@
 
   async function refreshLocation() {
     loading = true;
+    apiError = "";
 
     localStorage.removeItem("location-id");
-
     localStorage.removeItem("city");
 
     currentCity = "";
-
     cityInput = "";
-
     cityResults = [];
 
     navigator.geolocation.getCurrentPosition(
       async (position) => {
-        const lat = position.coords.latitude;
+        try {
+          const lat = position.coords.latitude;
+          const lon = position.coords.longitude;
 
-        const lon = position.coords.longitude;
-        latitude = lat;
-        longitude = lon;
-        localStorage.setItem("lat", lat.toString());
-        localStorage.setItem("lon", lon.toString());
+          latitude = lat;
+          longitude = lon;
 
-        const city = await getCity(lat, lon);
+          localStorage.setItem("lat", lat.toString());
+          localStorage.setItem("lon", lon.toString());
 
-        currentCity = city || "";
-        showCitySelection = false;
-        if (city) {
-          localStorage.setItem("city", city);
-        }
+          const location = await getCity(lat, lon);
 
-        const searchResponse = await fetch(`/api/location-search?city=${city}`);
+          if (!location?.city || !location?.region) {
+            throw new Error("City or state could not be determined");
+          }
 
-        const locations = await searchResponse.json();
+          const normalize = (value: string) =>
+            value
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, "")
+              .toLocaleLowerCase("de")
+              .trim();
 
-        if (!locations?.length) {
-          loading = false;
+          // Nur die Bundesländer Deutschlands laden
+          const statesResponse = await fetch(
+            "/api/location-search?type=states&countryId=13",
+          );
+
+          if (!statesResponse.ok) {
+            throw new Error("German states could not be loaded");
+          }
+
+          const germanStates: LocationOption[] = await statesResponse.json();
+
+          // Passendes Bundesland anhand der GPS-Adresse finden
+          const matchedState = germanStates.find(
+            (state) => normalize(state.name) === normalize(location.region),
+          );
+
+          if (!matchedState) {
+            throw new Error(`Diyanet region not found: ${location.region}`);
+          }
+
+          // Nur Städte aus diesem Bundesland laden
+          const citiesResponse = await fetch(
+            `/api/location-search?type=cities&stateId=${matchedState.id}`,
+          );
+
+          if (!citiesResponse.ok) {
+            throw new Error("Cities could not be loaded");
+          }
+
+          const germanCities: LocationOption[] = await citiesResponse.json();
+
+          const matchedLocation = germanCities.find(
+            (item) => normalize(item.name) === normalize(location.city),
+          );
+
+          if (!matchedLocation) {
+            throw new Error(`Diyanet city not found: ${location.city}`);
+          }
+
+          currentCity = matchedLocation.name;
+          showCitySelection = false;
+
+          localStorage.setItem("city", matchedLocation.name);
+          localStorage.setItem("location-id", matchedLocation.id.toString());
+
+          await fetchPrayerTimes(matchedLocation.id);
+
+          if (!apiError) {
+            fetchHadith();
+          }
+        } catch (error) {
+          console.error("GPS location lookup failed:", error);
+
           currentCity = "";
-          return;
+          showCitySelection = true;
+
+          await loadCountries();
+        } finally {
+          loading = false;
         }
-        const locationId = locations[0].id;
-
-        localStorage.setItem("location-id", locationId.toString());
-
-        await fetchPrayerTimes(locationId);
-
-        fetchHadith();
-
-        loading = false;
       },
       (error) => {
-        loading = false;
+        console.error("GPS location failed:", error);
 
+        loading = false;
         currentCity = "";
+        showCitySelection = true;
+
         if (error.code === error.PERMISSION_DENIED) {
           locationPermission = "denied";
         }
+
+        void loadCountries();
+      },
+      {
+        enableHighAccuracy: false,
+        timeout: 10000,
+        maximumAge: 300000,
       },
     );
+  }
+
+  async function shareApp() {
+    const shareData = {
+      title: "Namaz Vakitleri",
+      text: "Namaz vakitlerine ve kıble yönüne kolayca ulaş.",
+      url: window.location.origin,
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(shareData.url);
+        alert("Bağlantı kopyalandı!");
+      } else {
+        window.prompt("Bağlantıyı kopyala:", shareData.url);
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name !== "AbortError") {
+        console.error("Paylaşma başarısız:", error);
+      }
+    }
   }
 </script>
 
@@ -905,7 +1110,35 @@
       <div
         class="mb-5 rounded-[32px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-xl"
       >
-        <p class="text-sm tracking-wide text-white/50">Sonraki Namaz</p>
+        <div class="flex items-center justify-between">
+          <p class="text-sm tracking-wide text-white/50">Sonraki Namaz</p>
+
+          <button
+            type="button"
+            onclick={shareApp}
+            aria-label="Uygulamayı paylaş"
+            class="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 text-orange-300 transition hover:bg-white/5 active:scale-95"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="18" cy="5" r="3" />
+              <circle cx="6" cy="12" r="3" />
+              <circle cx="18" cy="19" r="3" />
+              <path d="m8.7 10.7 6.6-4.4" />
+              <path d="m8.7 13.3 6.6 4.4" />
+            </svg>
+          </button>
+        </div>
 
         {#if loading}
           <div
@@ -942,7 +1175,6 @@
             <p class="mt-2 text-red-200/80">
               {apiError}
             </p>
-
           </div>
         {/if}
 
@@ -1489,14 +1721,128 @@
         </span>
       </div>
 
-      {#if deferredPrompt}
-        <button
-          type="button"
-          onclick={installApp}
-          class="fixed bottom-6 left-1/2 z-50 w-[90%] max-w-md -translate-x-1/2 rounded-2xl bg-yellow-500 px-5 py-4 text-lg font-semibold text-black shadow-2xl"
+      {#if !isStandalone && !hideInstallHint && (deferredPrompt || isIos)}
+        <div
+          class="fixed bottom-4 left-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2"
         >
-          📲 Uygulamayı Yükle
-        </button>
+          <div
+            class="flex items-center gap-3 rounded-2xl border border-white/10 bg-[#171717]/95 px-4 py-3 shadow-xl backdrop-blur-xl"
+          >
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-medium text-white">Namaz Vakitleri</p>
+              <p class="mt-1 text-xs text-white/50">
+                Ana ekranına ekle, kolayca ulaş.
+              </p>
+            </div>
+
+            {#if deferredPrompt}
+              <button
+                type="button"
+                onclick={installApp}
+                class="shrink-0 rounded-xl border border-orange-400/30 px-3 py-2 text-sm font-medium text-orange-300 transition hover:bg-orange-400/10"
+              >
+                Ekle ↗
+              </button>
+            {:else if isIos}
+              <button
+                type="button"
+                onclick={() => (showIosInstallHelp = true)}
+                class="shrink-0 rounded-xl border border-orange-400/30 px-3 py-2 text-sm font-medium text-orange-300 transition hover:bg-orange-400/10"
+              >
+                Ekle ↗
+              </button>
+            {/if}
+
+            <button
+              type="button"
+              onclick={() => (hideInstallHint = true)}
+              class="shrink-0 p-1 text-lg leading-none text-white/40 transition hover:text-white/80"
+              aria-label="Installationshinweis schließen"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      {/if}
+
+      {#if showIosInstallHelp}
+        <div
+          class="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 p-4 backdrop-blur-sm sm:items-center"
+          role="presentation"
+          onclick={(event) => {
+            if (event.target === event.currentTarget) {
+              showIosInstallHelp = false;
+            }
+          }}
+        >
+          <div
+            class="w-full max-w-sm rounded-3xl border border-white/10 bg-[#171717] p-6 text-white shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ios-install-title"
+          >
+            <div class="mb-4 flex items-center justify-between">
+              <h2 id="ios-install-title" class="text-lg font-semibold">
+                Ana ekrana ekle
+              </h2>
+              <button
+                type="button"
+                onclick={() => (showIosInstallHelp = false)}
+                class="rounded-full px-3 py-2 text-white/60 hover:bg-white/10"
+                aria-label="Kapat"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p class="mb-5 text-sm leading-relaxed text-white/60">
+              Namaz Vakitleri uygulamasını ana ekranına eklemek için:
+            </p>
+
+            <div class="space-y-4">
+              <div class="flex items-start gap-3">
+                <span
+                  class="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-orange-400/10 font-semibold text-orange-300"
+                >
+                  1
+                </span>
+                <p class="pt-1 text-sm">
+                  Safari'de <strong>Paylaş</strong> simgesine dokun.
+                </p>
+              </div>
+
+              <div class="flex items-start gap-3">
+                <span
+                  class="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-orange-400/10 font-semibold text-orange-300"
+                >
+                  2
+                </span>
+                <p class="pt-1 text-sm">
+                  Menüden <strong>Ana Ekrana Ekle</strong> seçeneğini seç.
+                </p>
+              </div>
+
+              <div class="flex items-start gap-3">
+                <span
+                  class="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-orange-400/10 font-semibold text-orange-300"
+                >
+                  3
+                </span>
+                <p class="pt-1 text-sm">
+                  <strong>Ekle</strong> seçeneğine dokun.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onclick={() => (showIosInstallHelp = false)}
+              class="mt-6 w-full rounded-2xl bg-orange-400 px-4 py-3 font-semibold text-black"
+            >
+              Anladım
+            </button>
+          </div>
+        </div>
       {/if}
 
       <div class="mb-1 mt-8 flex justify-center">
@@ -1527,33 +1873,65 @@
           Konum alınamadı. Lütfen şehir seçin.
         </p>
 
-        <input
-          bind:value={cityInput}
-          placeholder="Şehir ara..."
-          class="w-full rounded-2xl border border-white/10 bg-black/30 p-4 text-white outline-none"
-        />
+        <div class="space-y-3">
+          <label class="block text-sm text-white/70">
+            Ülke
+            <select
+              value={selectedCountryId}
+              onchange={(event) => loadStates(event.currentTarget.value)}
+              class="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 p-4 text-white"
+            >
+              <option value="">Ülke seçin</option>
+              {#each countries as country}
+                <option value={String(country.id)}>{country.name}</option>
+              {/each}
+            </select>
+          </label>
 
-        <button
-          type="button"
-          onclick={searchCity}
-          class="mt-3 w-full rounded-2xl bg-white/10 p-4"
-        >
-          Şehir Ara
-        </button>
+          <label class="block text-sm text-white/70">
+            Bölge
+            <select
+              value={selectedStateId}
+              onchange={(event) => loadCities(event.currentTarget.value)}
+              disabled={!selectedCountryId || locationLoading}
+              class="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 p-4 text-white disabled:opacity-40"
+            >
+              <option value="">Bölge seçin</option>
+              {#each states as state}
+                <option value={String(state.id)}>{state.name}</option>
+              {/each}
+            </select>
+          </label>
 
-        {#if cityResults.length > 0}
-          <div class="mt-3 space-y-2">
-            {#each cityResults as city}
-              <button
-                type="button"
-                onclick={() => selectCity(city)}
-                class="w-full rounded-xl border border-white/10 bg-white/5 p-3 text-left text-white"
-              >
-                {city.region || city.name}
-              </button>
-            {/each}
-          </div>
-        {/if}
+          <label class="block text-sm text-white/70">
+            Şehir
+            <select
+              value={selectedCityId}
+              onchange={(event) => {
+                selectedCityId = event.currentTarget.value;
+                const city = cities.find(
+                  (item) => String(item.id) === selectedCityId,
+                );
+                if (city) selectCity(city);
+              }}
+              disabled={!selectedStateId || locationLoading}
+              class="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 p-4 text-white disabled:opacity-40"
+            >
+              <option value="">Şehir seçin</option>
+              {#each cities as city}
+                <option value={String(city.id)}>{city.name}</option>
+              {/each}
+            </select>
+          </label>
+
+          {#if locationLoading}
+            <p class="text-sm text-white/50">Şehirler yükleniyor …</p>
+          {/if}
+
+          {#if apiError}
+            <p class="text-sm text-red-300">{apiError}</p>
+          {/if}
+        </div>
       </div>
     </div>
 
