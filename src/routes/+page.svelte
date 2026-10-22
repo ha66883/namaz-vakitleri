@@ -805,6 +805,7 @@
       deferredPrompt = e;
     });
     await checkLocationPermission();
+    void loadCountries();
     const cachedLocationId = localStorage.getItem("location-id");
 
     const cachedCity = localStorage.getItem("city");
@@ -864,19 +865,20 @@
           localStorage.setItem("lat", lat.toString());
           localStorage.setItem("lon", lon.toString());
 
-          const city = await getCity(lat, lon);
+          const location = await getCity(lat, lon);
 
-          if (!city) {
+          if (!location) {
             throw new Error("City could not be determined");
           }
 
-          const normalize = (value: string) =>
-            value
+          const { city, region } = location;
+
+          const normalize = (value: unknown): string =>
+            String(value ?? "")
               .normalize("NFD")
               .replace(/[\u0300-\u036f]/g, "")
               .toLocaleLowerCase("de")
               .trim();
-
           const countriesResponse = await fetch(
             "/api/location-search?type=countries",
           );
@@ -942,16 +944,18 @@
           console.error("Location initialization failed:", error);
 
           apiError =
-            "Die Standortsuche ist momentan nicht erreichbar. Bitte versuche es später erneut.";
+            "Die Standortsuche ist momentan nicht erreichbar. Bitte wähle deine Stadt manuell aus.";
 
-          showCitySelection = false;
+          showCitySelection = true;
+          await loadCountries();
         } finally {
           loading = false;
         }
       },
-      () => {
+      async () => {
         locationError = true;
         showCitySelection = true;
+        await loadCountries();
         loading = false;
       },
     );
@@ -991,13 +995,12 @@
             throw new Error("City or state could not be determined");
           }
 
-          const normalize = (value: string) =>
-            value
+          const normalize = (value: unknown): string =>
+            String(value ?? "")
               .normalize("NFD")
               .replace(/[\u0300-\u036f]/g, "")
               .toLocaleLowerCase("de")
               .trim();
-
           // Nur die Bundesländer Deutschlands laden
           const statesResponse = await fetch(
             "/api/location-search?type=states&countryId=13",
