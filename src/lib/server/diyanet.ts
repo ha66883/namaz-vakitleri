@@ -1,4 +1,3 @@
-
 import { env } from "$env/dynamic/private";
 
 const API_BASE = "https://awqatsalah.diyanet.gov.tr";
@@ -84,6 +83,7 @@ export async function diyanetGet(path: string) {
   let response = await fetch(`${API_BASE}${path}`, {
     headers: {
       Authorization: `Bearer ${token}`,
+      Accept: "application/json",
     },
   });
 
@@ -98,12 +98,23 @@ export async function diyanetGet(path: string) {
     response = await fetch(`${API_BASE}${path}`, {
       headers: {
         Authorization: `Bearer ${token}`,
+        Accept: "application/json",
       },
     });
   }
 
   if (!response.ok) {
-    throw new Error(`Diyanet API request failed: ${response.status}`);
+    const errorBody = await response.text();
+
+    console.error("Diyanet API error:", {
+      status: response.status,
+      path,
+      body: errorBody,
+    });
+
+    throw new Error(
+      `Diyanet API request failed: ${response.status} - ${errorBody}`,
+    );
   }
 
   return response.json();
